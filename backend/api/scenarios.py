@@ -4,8 +4,8 @@ from typing import List, Optional
 from datetime import datetime, date, timedelta
 from pydantic import BaseModel
 
-from ..models.database import get_db
-from ..services.data_collector import DataCollector
+from models.database import get_db
+from services.data_collector import DataCollector
 
 router = APIRouter(prefix="/api/scenarios", tags=["scenarios"])
 collector = DataCollector()

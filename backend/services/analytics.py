@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from collections import Counter
 import json
 from sqlalchemy.orm import Session
-from ..models.models import CollectionJob, RedditPost, RedditComment, Analytics
+from models.models import CollectionJob, RedditPost, RedditComment, Analytics
 
 logger = logging.getLogger(__name__)
 

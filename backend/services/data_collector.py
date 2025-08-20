@@ -5,8 +5,8 @@ import logging
 from sqlalchemy.orm import Session
 from .reddit_client import RedditClient
 from .analytics import AnalyticsService
-from ..models.models import CollectionJob, RedditPost, RedditComment, RedditUser, JobStatus
-from ..models.database import get_db
+from models.models import CollectionJob, RedditPost, RedditComment, RedditUser, JobStatus
+from models.database import get_db
 
 logger = logging.getLogger(__name__)
 
