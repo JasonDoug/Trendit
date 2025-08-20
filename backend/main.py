@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 
 from models.database import engine, Base
 from api.scenarios import router as scenarios_router
+from api.query import router as query_router
 import os
 from dotenv import load_dotenv
 
@@ -56,6 +57,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(scenarios_router)
+app.include_router(query_router)
 
 @app.get("/")
 async def root():

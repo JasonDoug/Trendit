@@ -87,33 +87,59 @@ A powerful, production-ready API built with FastAPI for collecting, analyzing, a
 - **Batch Processing**: Handle large datasets efficiently
 - **Data Deduplication**: Prevent duplicate entries
 
-## 📖 API Scenarios
+## 📖 API Architecture
 
-Trendit implements specific data collection scenarios:
+Trendit provides a **three-tier API architecture** for different use cases:
 
-### 🎯 Scenario 1: Keyword Search with Date Range
-Find posts containing specific keywords within a date range:
+### 🚀 **Scenarios API** - *Quickstart Examples*
+Pre-configured common use cases for learning and demos:
+
 ```bash
-GET /api/scenarios/1/subreddit-keyword-search?subreddit=python&keywords=fastapi,django&date_from=2024-01-01&date_to=2024-12-31&limit=10
-```
+# Scenario 1: Keyword search with date range
+GET /api/scenarios/1/subreddit-keyword-search?subreddit=python&keywords=fastapi&date_from=2024-01-01&date_to=2024-12-31
 
-### 📈 Scenario 2: Multi-Subreddit Trending
-Get trending posts across multiple subreddits:
-```bash
-GET /api/scenarios/2/trending-multiple-subreddits?subreddits=python,programming&timeframe=day&limit=20
-```
+# Scenario 2: Multi-subreddit trending
+GET /api/scenarios/2/trending-multiple-subreddits?subreddits=python,programming&timeframe=day
 
-### 🔥 Scenario 3: Top Posts from r/all
-Retrieve top posts from Reddit's front page:
-```bash
-GET /api/scenarios/3/top-posts-all?sort_type=hot&time_filter=day&limit=15
-```
+# Scenario 3: Top posts from r/all
+GET /api/scenarios/3/top-posts-all?sort_type=hot&time_filter=day
 
-### ⭐ Scenario 4: Most Popular Posts
-Find the most popular posts in subreddits by timeframe:
-```bash
+# Scenario 4: Most popular posts today
 GET /api/scenarios/4/most-popular-today?subreddit=python&metric=score
 ```
+
+### 🔧 **Query API** - *Flexible One-off Queries*
+Advanced, customizable queries with full parameter control:
+
+```bash
+# Complex post filtering
+POST /api/query/posts
+{
+  "subreddits": ["python", "programming"],
+  "keywords": ["async", "performance"],
+  "min_score": 100,
+  "min_upvote_ratio": 0.8,
+  "exclude_keywords": ["beginner"],
+  "limit": 20
+}
+
+# User analysis
+POST /api/query/users
+{
+  "subreddits": ["python"],
+  "min_total_karma": 1000,
+  "min_account_age_days": 365
+}
+
+# Simple GET query
+GET /api/query/posts/simple?subreddits=python&keywords=fastapi&min_score=50
+```
+
+### 🏭 **Collection API** - *Production Data Pipeline* *(Coming Soon)*
+Persistent data collection, storage, and export:
+- `/api/collect/*` - Start collection jobs
+- `/api/data/*` - Query stored data  
+- `/api/export/*` - Export datasets
 
 ## 🏗️ Architecture
 
@@ -222,14 +248,34 @@ See [TESTING.md](TESTING.md) for detailed testing instructions.
 | `/docs` | GET | Interactive API documentation |
 | `/redoc` | GET | Alternative API documentation |
 
-### Scenario Endpoints
+### API Endpoints
 
+| Endpoint Category | Count | Description |
+|-------------------|-------|-------------|
+| **Core** | 2 | Basic API info and health checks |
+| **Scenarios** | 7 | Pre-configured quickstart examples |
+| **Query** | 5 | Flexible one-off queries with advanced filtering |
+| **Collection** | 0 | *Coming soon* - Persistent data pipeline |
+
+#### Scenario Endpoints
 | Endpoint | Description |
 |----------|-------------|
 | `/api/scenarios/1/subreddit-keyword-search` | Search by keywords and date |
 | `/api/scenarios/2/trending-multiple-subreddits` | Multi-subreddit trending |
 | `/api/scenarios/3/top-posts-all` | Top posts from r/all |
 | `/api/scenarios/4/most-popular-today` | Most popular posts today |
+| `/api/scenarios/comments/top-by-criteria` | Advanced comment analysis |
+| `/api/scenarios/users/top-by-activity` | User activity metrics |
+| `/api/scenarios/examples` | Example usage and parameters |
+
+#### Query Endpoints
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/query/posts` | POST | Advanced post filtering with complex parameters |
+| `/api/query/comments` | POST | Comment analysis with depth/score filtering |
+| `/api/query/users` | POST | User profiling and karma analysis |
+| `/api/query/posts/simple` | GET | Simple GET-based post queries |
+| `/api/query/examples` | GET | Query examples and documentation |
 
 ### Response Format
 
@@ -345,6 +391,7 @@ This tool is for research and educational purposes. Please:
 
 - 📖 [Documentation](docs/)
 - 🧪 [Testing Guide](TESTING.md)
+- 📝 [cURL Examples](docs/CURL_EXAMPLES.md) - 100+ complete examples
 - 🐛 [Issue Tracker](https://github.com/yourusername/Trendit/issues)
 - 💬 [Discussions](https://github.com/yourusername/Trendit/discussions)
 
