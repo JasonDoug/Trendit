@@ -152,17 +152,92 @@ Expected response:
 }
 ```
 
-#### Root Endpoint
+#### API Documentation
+- **Swagger UI**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
+- **OpenAPI Spec**: http://localhost:8000/openapi.json
+
+#### Test Scenario Endpoints (Quickstarts)
 ```bash
-curl http://localhost:8000/
+# Scenario 1: Keyword search
+curl "http://localhost:8000/api/scenarios/1/subreddit-keyword-search?subreddit=python&keywords=fastapi&date_from=2024-01-01&date_to=2024-12-31&limit=3"
+
+# Scenario 2: Multi-subreddit trending
+curl "http://localhost:8000/api/scenarios/2/trending-multi-subreddits?subreddits=python,programming&timeframe=day&limit=5"
+
+# Scenario 3: Top posts from r/all
+curl "http://localhost:8000/api/scenarios/3/top-posts-all?sort_type=hot&time_filter=day&limit=5"
+
+# Scenario 4: Most popular today
+curl "http://localhost:8000/api/scenarios/4/most-popular-today?subreddit=python&metric=score"
+
+# Get all scenario examples
+curl http://localhost:8000/api/scenarios/examples
 ```
 
-#### API Documentation
-Open in browser: http://localhost:8000/docs
-
-#### Test Scenario Endpoint
+#### Test Query Endpoints (Advanced)
 ```bash
-curl "http://localhost:8000/api/scenarios/1/subreddit-keyword-search?subreddit=python&keywords=fastapi&date_from=2024-01-01&date_to=2024-12-31&limit=3"
+# Simple GET query
+curl "http://localhost:8000/api/query/posts/simple?subreddits=python&keywords=django&min_score=20&limit=3"
+
+# Multiple subreddits with filtering
+curl "http://localhost:8000/api/query/posts/simple?subreddits=python,programming&keywords=async&min_score=50&limit=5"
+
+# Get query examples
+curl http://localhost:8000/api/query/examples
+
+# Complex POST query - Advanced filtering
+curl -X POST http://localhost:8000/api/query/posts \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subreddits": ["python", "programming"],
+    "keywords": ["fastapi", "async"],
+    "min_score": 100,
+    "min_upvote_ratio": 0.8,
+    "exclude_keywords": ["beginner"],
+    "sort_type": "top",
+    "time_filter": "week",
+    "limit": 10
+  }'
+
+# User analysis query
+curl -X POST http://localhost:8000/api/query/users \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subreddits": ["python"],
+    "min_total_karma": 1000,
+    "min_account_age_days": 365,
+    "limit": 10
+  }'
+
+# Comment analysis query
+curl -X POST http://localhost:8000/api/query/comments \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subreddits": ["python"],
+    "keywords": ["django"],
+    "min_score": 10,
+    "limit": 15
+  }'
+```
+
+### Test 5: Query API Test Suite
+Run the comprehensive Query API test suite:
+```bash
+python test_query_api.py
+```
+
+Expected output:
+```
+🔥 Trendit Query API Test Suite
+========================================
+✅ API healthy!
+✅ Simple GET query successful!
+✅ Complex query successful!
+✅ User query successful!
+========================================
+Test Results: 4/4 passed
+🎉 All Query API tests passed!
 ```
 
 ## Troubleshooting
