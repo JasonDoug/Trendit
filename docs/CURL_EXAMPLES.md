@@ -124,6 +124,258 @@ curl -X GET "http://localhost:8000/api/scenarios/examples"
 curl -s "http://localhost:8000/api/scenarios/examples" | python -m json.tool
 ```
 
+## Collection API - Persistent Data Pipeline
+
+### Job Management
+
+#### Create Collection Jobs
+```bash
+# Basic collection job for r/python
+curl -X POST "http://localhost:8000/api/collect/jobs" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subreddits": ["python"],
+    "sort_types": ["hot"],
+    "time_filters": ["day"],
+    "post_limit": 10,
+    "comment_limit": 5,
+    "max_comment_depth": 2,
+    "min_score": 1,
+    "exclude_nsfw": true,
+    "anonymize_users": true
+  }'
+
+# Multi-subreddit machine learning collection
+curl -X POST "http://localhost:8000/api/collect/jobs" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subreddits": ["MachineLearning", "artificial", "deeplearning"],
+    "sort_types": ["hot", "top"],
+    "time_filters": ["day", "week"],
+    "post_limit": 50,
+    "comment_limit": 20,
+    "max_comment_depth": 3,
+    "keywords": ["neural", "transformer", "model"],
+    "min_score": 25,
+    "min_upvote_ratio": 0.8,
+    "exclude_nsfw": true,
+    "anonymize_users": false
+  }'
+
+# Large-scale programming discussion collection
+curl -X POST "http://localhost:8000/api/collect/jobs" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subreddits": ["programming", "webdev", "javascript", "python"],
+    "sort_types": ["hot", "new", "top"],
+    "time_filters": ["day"],
+    "post_limit": 200,
+    "comment_limit": 50,
+    "max_comment_depth": 5,
+    "keywords": ["framework", "library", "tool"],
+    "min_score": 10,
+    "min_upvote_ratio": 0.75,
+    "exclude_nsfw": true,
+    "anonymize_users": true
+  }'
+
+# Keyword-specific research collection
+curl -X POST "http://localhost:8000/api/collect/jobs" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subreddits": ["python", "django", "flask"],
+    "sort_types": ["top"],
+    "time_filters": ["month"],
+    "post_limit": 100,
+    "comment_limit": 30,
+    "max_comment_depth": 4,
+    "keywords": ["fastapi", "async", "performance"],
+    "min_score": 50,
+    "min_upvote_ratio": 0.85,
+    "date_from": "2024-01-01T00:00:00Z",
+    "date_to": "2024-12-31T23:59:59Z",
+    "exclude_nsfw": true,
+    "anonymize_users": false
+  }'
+
+# High-volume data science collection
+curl -X POST "http://localhost:8000/api/collect/jobs" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subreddits": ["datascience", "analytics", "statistics", "MachineLearning"],
+    "sort_types": ["hot", "top", "new"],
+    "time_filters": ["day", "week"],
+    "post_limit": 500,
+    "comment_limit": 100,
+    "max_comment_depth": 6,
+    "keywords": ["dataset", "analysis", "visualization", "pandas"],
+    "min_score": 5,
+    "min_upvote_ratio": 0.7,
+    "exclude_nsfw": true,
+    "anonymize_users": true
+  }'
+```
+
+#### List and Filter Collection Jobs
+```bash
+# List all collection jobs
+curl -X GET "http://localhost:8000/api/collect/jobs"
+
+# List with pagination
+curl -X GET "http://localhost:8000/api/collect/jobs?page=1&per_page=10"
+
+# Filter by status
+curl -X GET "http://localhost:8000/api/collect/jobs?status=completed"
+curl -X GET "http://localhost:8000/api/collect/jobs?status=running"
+curl -X GET "http://localhost:8000/api/collect/jobs?status=pending"
+curl -X GET "http://localhost:8000/api/collect/jobs?status=failed"
+
+# Combined filtering and pagination
+curl -X GET "http://localhost:8000/api/collect/jobs?status=completed&page=2&per_page=5"
+```
+
+#### Get Job Details and Status
+```bash
+# Get full job details (replace with actual job ID)
+curl -X GET "http://localhost:8000/api/collect/jobs/fdd1714e-2f34-4134-bad9-8625581ebccf"
+
+# Get quick status update
+curl -X GET "http://localhost:8000/api/collect/jobs/fdd1714e-2f34-4134-bad9-8625581ebccf/status"
+
+# Monitor job progress in real-time
+while true; do
+  curl -s "http://localhost:8000/api/collect/jobs/fdd1714e-2f34-4134-bad9-8625581ebccf/status" | \
+    python -c "import sys,json; data=json.load(sys.stdin); print(f'Status: {data[\"status\"]}, Progress: {data[\"progress\"]}%, Posts: {data[\"collected_posts\"]}')"
+  sleep 2
+done
+
+# Check if job is complete
+curl -s "http://localhost:8000/api/collect/jobs/fdd1714e-2f34-4134-bad9-8625581ebccf/status" | \
+  python -c "import sys,json; data=json.load(sys.stdin); print('✅ Complete' if data['status'] == 'completed' else '⏳ Running...')"
+```
+
+#### Cancel and Delete Jobs
+```bash
+# Cancel a running job
+curl -X POST "http://localhost:8000/api/collect/jobs/fdd1714e-2f34-4134-bad9-8625581ebccf/cancel"
+
+# Delete a completed job and all its data (DESTRUCTIVE)
+curl -X DELETE "http://localhost:8000/api/collect/jobs/fdd1714e-2f34-4134-bad9-8625581ebccf"
+
+# Confirm deletion worked (should return 404)
+curl -X GET "http://localhost:8000/api/collect/jobs/fdd1714e-2f34-4134-bad9-8625581ebccf"
+```
+
+### Collection Workflows
+
+#### Create and Monitor Workflow
+```bash
+# 1. Create a new collection job
+RESPONSE=$(curl -s -X POST "http://localhost:8000/api/collect/jobs" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subreddits": ["python"],
+    "sort_types": ["hot"],
+    "time_filters": ["day"],
+    "post_limit": 5,
+    "comment_limit": 0,
+    "min_score": 1,
+    "exclude_nsfw": true,
+    "anonymize_users": true
+  }')
+
+# 2. Extract job ID
+JOB_ID=$(echo "$RESPONSE" | python -c "import sys,json; print(json.load(sys.stdin)['job_id'])")
+echo "Created job: $JOB_ID"
+
+# 3. Monitor until completion
+while true; do
+  STATUS=$(curl -s "http://localhost:8000/api/collect/jobs/$JOB_ID/status" | \
+    python -c "import sys,json; print(json.load(sys.stdin)['status'])")
+  
+  if [ "$STATUS" = "completed" ] || [ "$STATUS" = "failed" ]; then
+    break
+  fi
+  
+  echo "Job status: $STATUS"
+  sleep 1
+done
+
+# 4. Get final results
+curl -s "http://localhost:8000/api/collect/jobs/$JOB_ID" | \
+  python -c "import sys,json; data=json.load(sys.stdin); print(f'Final: {data[\"status\"]} - {data[\"collected_posts\"]} posts collected')"
+```
+
+#### Batch Job Creation
+```bash
+# Create multiple jobs for different subreddits
+SUBREDDITS=("python" "programming" "webdev" "javascript" "datascience")
+
+for subreddit in "${SUBREDDITS[@]}"; do
+  echo "Creating job for r/$subreddit..."
+  
+  curl -s -X POST "http://localhost:8000/api/collect/jobs" \
+    -H "Content-Type: application/json" \
+    -d "{
+      \"subreddits\": [\"$subreddit\"],
+      \"sort_types\": [\"hot\"],
+      \"time_filters\": [\"day\"],
+      \"post_limit\": 10,
+      \"comment_limit\": 5,
+      \"min_score\": 5,
+      \"exclude_nsfw\": true,
+      \"anonymize_users\": true
+    }" | \
+    python -c "import sys,json; data=json.load(sys.stdin); print(f'✅ Created job {data[\"job_id\"]} for r/$subreddit')"
+    
+  sleep 1
+done
+```
+
+#### Job Statistics and Analysis
+```bash
+# Get summary of all jobs
+curl -s "http://localhost:8000/api/collect/jobs" | \
+  python -c "
+import sys,json
+data=json.load(sys.stdin)
+total = data['total']
+completed = sum(1 for job in data['jobs'] if job['status'] == 'completed')
+running = sum(1 for job in data['jobs'] if job['status'] == 'running')
+failed = sum(1 for job in data['jobs'] if job['status'] == 'failed')
+total_posts = sum(job['collected_posts'] for job in data['jobs'])
+print(f'Jobs: {total} total, {completed} completed, {running} running, {failed} failed')
+print(f'Total posts collected: {total_posts}')
+"
+
+# Find most productive jobs
+curl -s "http://localhost:8000/api/collect/jobs?status=completed" | \
+  python -c "
+import sys,json
+data=json.load(sys.stdin)
+jobs = sorted(data['jobs'], key=lambda x: x['collected_posts'], reverse=True)[:5]
+print('Top 5 most productive jobs:')
+for job in jobs:
+    subreddits = ', '.join(job['subreddits'])
+    print(f'  {job[\"job_id\"][:8]}... - {job[\"collected_posts\"]} posts from r/{subreddits}')
+"
+
+# Calculate collection efficiency
+curl -s "http://localhost:8000/api/collect/jobs?status=completed" | \
+  python -c "
+import sys,json
+from datetime import datetime
+data=json.load(sys.stdin)
+for job in data['jobs'][:3]:
+    if job['started_at'] and job['completed_at']:
+        start = datetime.fromisoformat(job['started_at'].replace('Z', '+00:00'))
+        end = datetime.fromisoformat(job['completed_at'].replace('Z', '+00:00'))
+        duration = (end - start).total_seconds()
+        rate = job['collected_posts'] / max(duration, 1)
+        print(f'Job {job[\"job_id\"][:8]}... - {rate:.2f} posts/second')
+"
+```
+
 ## Query API - Advanced Flexible Queries
 
 ### Simple GET Queries
@@ -370,9 +622,178 @@ echo "Testing query endpoints..."
 curl -s "http://localhost:8000/api/query/examples" > /dev/null && echo "✅ Query examples"
 curl -s "http://localhost:8000/api/query/posts/simple?subreddits=python&limit=1" > /dev/null && echo "✅ Simple query"
 
+# Test collection endpoints
+echo "Testing collection endpoints..."
+curl -s "http://localhost:8000/api/collect/jobs" > /dev/null && echo "✅ List jobs endpoint"
+
+# Create and test a collection job
+echo "Testing collection job creation..."
+JOB_RESPONSE=$(curl -s -X POST "http://localhost:8000/api/collect/jobs" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subreddits": ["python"],
+    "sort_types": ["hot"],
+    "time_filters": ["day"],
+    "post_limit": 2,
+    "comment_limit": 0,
+    "min_score": 1,
+    "exclude_nsfw": true,
+    "anonymize_users": true
+  }')
+
+if echo "$JOB_RESPONSE" | grep -q "job_id"; then
+  echo "✅ Collection job creation"
+  
+  # Extract job ID and test status endpoint
+  JOB_ID=$(echo "$JOB_RESPONSE" | python -c "import sys,json; print(json.load(sys.stdin)['job_id'])")
+  sleep 2
+  
+  curl -s "http://localhost:8000/api/collect/jobs/$JOB_ID/status" > /dev/null && echo "✅ Job status endpoint"
+  curl -s "http://localhost:8000/api/collect/jobs/$JOB_ID" > /dev/null && echo "✅ Job details endpoint"
+else
+  echo "❌ Collection job creation failed"
+fi
+
 # Performance test
 echo "Performance testing..."
 time curl -s "http://localhost:8000/api/query/posts/simple?subreddits=python&keywords=fastapi&limit=5" > /dev/null
+```
+
+## Complete Collection API Test Suite
+
+```bash
+#!/bin/bash
+# Complete test suite for Collection API
+
+echo "🧪 Collection API Test Suite"
+echo "============================="
+
+# Test 1: List empty jobs
+echo "Test 1: List jobs (should be empty or existing jobs)"
+curl -s "http://localhost:8000/api/collect/jobs" | python -c "
+import sys,json
+data=json.load(sys.stdin)
+print(f'✅ Found {data[\"total\"]} existing jobs')
+"
+
+# Test 2: Create basic job
+echo -e "\nTest 2: Create basic collection job"
+BASIC_JOB=$(curl -s -X POST "http://localhost:8000/api/collect/jobs" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subreddits": ["python"],
+    "sort_types": ["hot"],
+    "time_filters": ["day"],
+    "post_limit": 3,
+    "comment_limit": 0,
+    "min_score": 1,
+    "exclude_nsfw": true,
+    "anonymize_users": true
+  }')
+
+BASIC_JOB_ID=$(echo "$BASIC_JOB" | python -c "import sys,json; print(json.load(sys.stdin)['job_id'])")
+echo "✅ Created basic job: $BASIC_JOB_ID"
+
+# Test 3: Create advanced job with keywords
+echo -e "\nTest 3: Create advanced job with keywords"
+ADVANCED_JOB=$(curl -s -X POST "http://localhost:8000/api/collect/jobs" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subreddits": ["python", "programming"],
+    "sort_types": ["hot", "top"],
+    "time_filters": ["day"],
+    "post_limit": 5,
+    "comment_limit": 5,
+    "max_comment_depth": 2,
+    "keywords": ["fastapi", "django"],
+    "min_score": 5,
+    "min_upvote_ratio": 0.8,
+    "exclude_nsfw": true,
+    "anonymize_users": false
+  }')
+
+ADVANCED_JOB_ID=$(echo "$ADVANCED_JOB" | python -c "import sys,json; print(json.load(sys.stdin)['job_id'])")
+echo "✅ Created advanced job: $ADVANCED_JOB_ID"
+
+# Test 4: Monitor job completion
+echo -e "\nTest 4: Monitor job completion"
+for job_id in "$BASIC_JOB_ID" "$ADVANCED_JOB_ID"; do
+  echo "Monitoring job $job_id..."
+  for i in {1..10}; do
+    STATUS=$(curl -s "http://localhost:8000/api/collect/jobs/$job_id/status" | \
+      python -c "import sys,json; data=json.load(sys.stdin); print(data['status'])")
+    
+    if [ "$STATUS" = "completed" ] || [ "$STATUS" = "failed" ]; then
+      echo "✅ Job $job_id completed with status: $STATUS"
+      break
+    fi
+    
+    echo "  Status: $STATUS (attempt $i/10)"
+    sleep 1
+  done
+done
+
+# Test 5: Get job details
+echo -e "\nTest 5: Get job details"
+curl -s "http://localhost:8000/api/collect/jobs/$BASIC_JOB_ID" | python -c "
+import sys,json
+data=json.load(sys.stdin)
+print(f'✅ Job details: {data[\"status\"]} - {data[\"collected_posts\"]} posts, {data[\"collected_comments\"]} comments')
+"
+
+# Test 6: List jobs with pagination
+echo -e "\nTest 6: Test pagination"
+curl -s "http://localhost:8000/api/collect/jobs?page=1&per_page=5" | python -c "
+import sys,json
+data=json.load(sys.stdin)
+print(f'✅ Pagination: page 1, {len(data[\"jobs\"])} jobs returned')
+"
+
+# Test 7: Filter by status
+echo -e "\nTest 7: Filter by status"
+curl -s "http://localhost:8000/api/collect/jobs?status=completed" | python -c "
+import sys,json
+data=json.load(sys.stdin)
+completed_jobs = len(data['jobs'])
+print(f'✅ Status filter: found {completed_jobs} completed jobs')
+"
+
+# Test 8: Test invalid job ID
+echo -e "\nTest 8: Test invalid job ID (should return 404)"
+INVALID_RESPONSE=$(curl -s -w "HTTP_%{http_code}" "http://localhost:8000/api/collect/jobs/invalid-job-id")
+if echo "$INVALID_RESPONSE" | grep -q "HTTP_404"; then
+  echo "✅ Invalid job ID correctly returns 404"
+else
+  echo "❌ Invalid job ID test failed"
+fi
+
+# Test 9: Test job cancellation (create a job to cancel)
+echo -e "\nTest 9: Test job cancellation"
+CANCEL_JOB=$(curl -s -X POST "http://localhost:8000/api/collect/jobs" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subreddits": ["python"],
+    "sort_types": ["hot"],
+    "time_filters": ["day"],
+    "post_limit": 100,
+    "comment_limit": 50,
+    "min_score": 1,
+    "exclude_nsfw": true,
+    "anonymize_users": true
+  }')
+
+CANCEL_JOB_ID=$(echo "$CANCEL_JOB" | python -c "import sys,json; print(json.load(sys.stdin)['job_id'])")
+
+# Try to cancel it immediately
+CANCEL_RESPONSE=$(curl -s -X POST "http://localhost:8000/api/collect/jobs/$CANCEL_JOB_ID/cancel")
+if echo "$CANCEL_RESPONSE" | grep -q "cancelled successfully"; then
+  echo "✅ Job cancellation works"
+else
+  echo "⚠️  Job may have completed before cancellation"
+fi
+
+echo -e "\n🎉 Collection API test suite completed!"
+echo "Run this script to verify all Collection API functionality."
 ```
 
 ## Response Processing Examples

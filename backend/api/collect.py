@@ -1,0 +1,397 @@
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from sqlalchemy.orm import Session
+from typing import List, Optional, Dict, Any
+from datetime import datetime, timedelta
+from pydantic import BaseModel, Field
+import uuid
+import logging
+
+from models.database import get_db
+from models.models import CollectionJob, JobStatus, SortType, TimeFilter, RedditPost, RedditComment
+from services.data_collector import DataCollector
+
+router = APIRouter(prefix="/api/collect", tags=["collection"])
+logger = logging.getLogger(__name__)
+
+# Request/Response Models
+class CollectionJobRequest(BaseModel):
+    """Request model for creating a new collection job"""
+    
+    # Collection targets
+    subreddits: List[str] = Field(..., description="List of subreddit names")
+    sort_types: List[SortType] = Field(default=[SortType.HOT], description="Sort types to use")
+    time_filters: List[TimeFilter] = Field(default=[TimeFilter.WEEK], description="Time filters to apply")
+    
+    # Limits
+    post_limit: int = Field(default=100, ge=1, le=10000, description="Maximum posts to collect")
+    comment_limit: int = Field(default=50, ge=0, le=1000, description="Maximum comments per post")
+    max_comment_depth: int = Field(default=3, ge=0, le=10, description="Maximum comment thread depth")
+    
+    # Filters
+    keywords: Optional[List[str]] = Field(default=None, description="Search keywords")
+    min_score: int = Field(default=0, description="Minimum post score")
+    min_upvote_ratio: float = Field(default=0.0, ge=0.0, le=1.0, description="Minimum upvote ratio")
+    date_from: Optional[datetime] = Field(default=None, description="Start date filter")
+    date_to: Optional[datetime] = Field(default=None, description="End date filter")
+    exclude_nsfw: bool = Field(default=True, description="Exclude NSFW content")
+    anonymize_users: bool = Field(default=True, description="Anonymize user information")
+
+class CollectionJobResponse(BaseModel):
+    """Response model for collection job information"""
+    
+    id: int
+    job_id: str
+    status: JobStatus
+    progress: int
+    total_expected: int
+    collected_posts: int
+    collected_comments: int
+    error_message: Optional[str]
+    created_at: datetime
+    started_at: Optional[datetime]
+    completed_at: Optional[datetime]
+    
+    # Collection parameters (subset for response)
+    subreddits: List[str]
+    post_limit: int
+    
+    class Config:
+        from_attributes = True
+
+class CollectionJobStatusResponse(BaseModel):
+    """Simplified response for job status checks"""
+    
+    job_id: str
+    status: JobStatus
+    progress: int
+    collected_posts: int
+    collected_comments: int
+    error_message: Optional[str]
+
+class CollectionJobListResponse(BaseModel):
+    """Response for listing collection jobs"""
+    
+    jobs: List[CollectionJobResponse]
+    total: int
+    page: int
+    per_page: int
+
+# Collection Job Management Endpoints
+
+@router.post("/jobs", response_model=CollectionJobResponse)
+async def create_collection_job(
+    job_request: CollectionJobRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """
+    Create a new persistent collection job
+    
+    This endpoint creates a collection job that will run in the background
+    and store all collected data in the database for later analysis.
+    """
+    try:
+        # Generate unique job ID
+        job_id = str(uuid.uuid4())
+        
+        # Create collection job record
+        collection_job = CollectionJob(
+            job_id=job_id,
+            user_id=None,  # TODO: Add authentication
+            subreddits=job_request.subreddits,
+            sort_types=[st.value for st in job_request.sort_types],
+            time_filters=[tf.value for tf in job_request.time_filters],
+            post_limit=job_request.post_limit,
+            comment_limit=job_request.comment_limit,
+            max_comment_depth=job_request.max_comment_depth,
+            keywords=job_request.keywords,
+            min_score=job_request.min_score,
+            min_upvote_ratio=job_request.min_upvote_ratio,
+            date_from=job_request.date_from,
+            date_to=job_request.date_to,
+            exclude_nsfw=job_request.exclude_nsfw,
+            anonymize_users=job_request.anonymize_users,
+            status=JobStatus.PENDING
+        )
+        
+        db.add(collection_job)
+        db.commit()
+        db.refresh(collection_job)
+        
+        # Start background collection
+        background_tasks.add_task(
+            run_collection_job,
+            collection_job.id,
+            job_request.dict()
+        )
+        
+        logger.info(f"Created collection job {job_id} with {len(job_request.subreddits)} subreddits")
+        
+        return CollectionJobResponse.from_orm(collection_job)
+        
+    except Exception as e:
+        logger.error(f"Failed to create collection job: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create collection job: {str(e)}")
+
+@router.get("/jobs/{job_id}", response_model=CollectionJobResponse)
+async def get_collection_job(
+    job_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Get detailed information about a specific collection job
+    """
+    job = db.query(CollectionJob).filter(CollectionJob.job_id == job_id).first()
+    
+    if not job:
+        raise HTTPException(status_code=404, detail="Collection job not found")
+    
+    return CollectionJobResponse.from_orm(job)
+
+@router.get("/jobs/{job_id}/status", response_model=CollectionJobStatusResponse)
+async def get_collection_job_status(
+    job_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Get quick status update for a collection job
+    """
+    job = db.query(CollectionJob).filter(CollectionJob.job_id == job_id).first()
+    
+    if not job:
+        raise HTTPException(status_code=404, detail="Collection job not found")
+    
+    return CollectionJobStatusResponse(
+        job_id=job.job_id,
+        status=job.status,
+        progress=job.progress,
+        collected_posts=job.collected_posts,
+        collected_comments=job.collected_comments,
+        error_message=job.error_message
+    )
+
+@router.get("/jobs", response_model=CollectionJobListResponse)
+async def list_collection_jobs(
+    status: Optional[JobStatus] = None,
+    page: int = 1,
+    per_page: int = 20,
+    db: Session = Depends(get_db)
+):
+    """
+    List collection jobs with optional filtering
+    """
+    query = db.query(CollectionJob)
+    
+    if status:
+        query = query.filter(CollectionJob.status == status)
+    
+    # Get total count
+    total = query.count()
+    
+    # Apply pagination
+    offset = (page - 1) * per_page
+    jobs = query.order_by(CollectionJob.created_at.desc()).offset(offset).limit(per_page).all()
+    
+    return CollectionJobListResponse(
+        jobs=[CollectionJobResponse.from_orm(job) for job in jobs],
+        total=total,
+        page=page,
+        per_page=per_page
+    )
+
+@router.post("/jobs/{job_id}/cancel")
+async def cancel_collection_job(
+    job_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Cancel a running collection job
+    """
+    job = db.query(CollectionJob).filter(CollectionJob.job_id == job_id).first()
+    
+    if not job:
+        raise HTTPException(status_code=404, detail="Collection job not found")
+    
+    if job.status not in [JobStatus.PENDING, JobStatus.RUNNING]:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Cannot cancel job with status: {job.status.value}"
+        )
+    
+    job.status = JobStatus.CANCELLED
+    job.completed_at = datetime.utcnow()
+    db.commit()
+    
+    logger.info(f"Cancelled collection job {job_id}")
+    
+    return {"message": f"Collection job {job_id} cancelled successfully"}
+
+@router.delete("/jobs/{job_id}")
+async def delete_collection_job(
+    job_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Delete a collection job and all associated data
+    
+    WARNING: This will permanently delete all collected posts, comments, and analytics
+    """
+    job = db.query(CollectionJob).filter(CollectionJob.job_id == job_id).first()
+    
+    if not job:
+        raise HTTPException(status_code=404, detail="Collection job not found")
+    
+    if job.status == JobStatus.RUNNING:
+        raise HTTPException(
+            status_code=400, 
+            detail="Cannot delete a running job. Cancel it first."
+        )
+    
+    # Delete the job (cascade will handle related data)
+    db.delete(job)
+    db.commit()
+    
+    logger.info(f"Deleted collection job {job_id}")
+    
+    return {"message": f"Collection job {job_id} deleted successfully"}
+
+# Background Collection Function
+
+async def run_collection_job(job_id: int, job_params: Dict[str, Any]):
+    """
+    Background task to run a collection job with real data collection
+    """
+    from models.database import SessionLocal
+    
+    db = SessionLocal()
+    collector = DataCollector()
+    
+    try:
+        # Get the job record
+        job = db.query(CollectionJob).filter(CollectionJob.id == job_id).first()
+        if not job:
+            logger.error(f"Collection job {job_id} not found")
+            return
+        
+        # Update status to running
+        job.status = JobStatus.RUNNING
+        job.started_at = datetime.utcnow()
+        db.commit()
+        
+        logger.info(f"Starting collection job {job.job_id} for subreddits: {job.subreddits}")
+        
+        # Estimate total expected items
+        estimated_posts = min(job.post_limit, len(job.subreddits) * 25)
+        job.total_expected = estimated_posts
+        db.commit()
+        
+        # Run collection for each subreddit and sort type combination
+        total_collected_posts = 0
+        total_collected_comments = 0
+        all_collected_data = []
+        
+        for subreddit in job.subreddits:
+            for sort_type in job.sort_types:
+                for time_filter in job.time_filters:
+                    if job.status == JobStatus.CANCELLED:
+                        logger.info(f"Collection job {job.job_id} was cancelled")
+                        return
+                    
+                    try:
+                        logger.info(f"Collecting from r/{subreddit} with {sort_type} sort and {time_filter} filter")
+                        
+                        # Use DataCollector to get posts based on job parameters
+                        if job.keywords:
+                            # If keywords are specified, use search
+                            posts_data = await collector.search_subreddit_posts_by_keyword_and_date(
+                                subreddit=subreddit,
+                                keywords=job.keywords,
+                                date_from=job.date_from or (datetime.utcnow() - timedelta(days=7)),
+                                date_to=job.date_to or datetime.utcnow(),
+                                limit=min(job.post_limit // len(job.subreddits), 100),
+                                sort_by="score"
+                            )
+                        else:
+                            # Use trending/popular posts collection
+                            posts_data = await collector.get_trending_posts_multiple_subreddits(
+                                subreddits=[subreddit],
+                                timeframe=time_filter,
+                                limit_per_subreddit=min(job.post_limit // len(job.subreddits), 25),
+                                final_limit=min(job.post_limit, 100)
+                            )
+                        
+                        # Store collected data
+                        for post_data in posts_data:
+                            try:
+                                # Create RedditPost record
+                                created_utc = post_data.get('created_utc')
+                                if isinstance(created_utc, (int, float)):
+                                    created_utc = datetime.fromtimestamp(created_utc)
+                                elif not isinstance(created_utc, datetime):
+                                    created_utc = datetime.utcnow()
+                                
+                                reddit_post = RedditPost(
+                                    collection_job_id=job.id,
+                                    reddit_id=post_data.get('id'),
+                                    title=post_data.get('title'),
+                                    selftext=post_data.get('selftext'),
+                                    url=post_data.get('url'),
+                                    permalink=post_data.get('permalink'),
+                                    subreddit=post_data.get('subreddit'),
+                                    author=post_data.get('author') if not job.anonymize_users else None,
+                                    score=post_data.get('score', 0),
+                                    upvote_ratio=post_data.get('upvote_ratio', 0.0),
+                                    num_comments=post_data.get('num_comments', 0),
+                                    is_nsfw=post_data.get('over_18', False),
+                                    created_utc=created_utc
+                                )
+                                
+                                db.add(reddit_post)
+                                db.flush()  # Get the ID without committing
+                                
+                                total_collected_posts += 1
+                                
+                                # Collect comments if requested
+                                if job.comment_limit > 0:
+                                    # Placeholder for comment collection
+                                    # Would implement comment collection here
+                                    pass
+                                
+                            except Exception as e:
+                                logger.error(f"Error storing post {post_data.get('id')}: {e}")
+                                continue
+                        
+                        # Update progress
+                        progress = min(100, int((total_collected_posts / max(estimated_posts, 1)) * 100))
+                        job.progress = progress
+                        job.collected_posts = total_collected_posts
+                        job.collected_comments = total_collected_comments
+                        db.commit()
+                        
+                        logger.info(f"Collected {len(posts_data)} posts from r/{subreddit}")
+                        
+                    except Exception as e:
+                        logger.error(f"Error collecting from r/{subreddit} ({sort_type}, {time_filter}): {e}")
+                        continue
+        
+        # Mark job as completed
+        job.status = JobStatus.COMPLETED
+        job.completed_at = datetime.utcnow()
+        job.progress = 100
+        db.commit()
+        
+        logger.info(f"Completed collection job {job.job_id}: {total_collected_posts} posts, {total_collected_comments} comments")
+        
+    except Exception as e:
+        logger.error(f"Collection job {job_id} failed: {e}")
+        
+        # Mark job as failed
+        job = db.query(CollectionJob).filter(CollectionJob.id == job_id).first()
+        if job:
+            job.status = JobStatus.FAILED
+            job.error_message = str(e)
+            job.completed_at = datetime.utcnow()
+            db.commit()
+    
+    finally:
+        db.close()

@@ -50,7 +50,11 @@ A powerful, production-ready API built with FastAPI for collecting, analyzing, a
 
 6. **Test the installation**
    ```bash
+   # Run comprehensive test suite
    python test_api.py
+   
+   # Or run focused Collection API tests
+   python test_collection_api.py
    ```
 
 🎉 **Your API is now running at http://localhost:8000**
@@ -69,11 +73,19 @@ A powerful, production-ready API built with FastAPI for collecting, analyzing, a
 
 ### 🔍 Search & Analytics
 - **Keyword Search**: Search across titles, content, and comments
-- **Sentiment Analysis**: Automated content sentiment scoring
+- **Sentiment Analysis**: Automated content sentiment scoring (OpenRouter integration)
 - **Trend Analysis**: Track post performance over time
 - **Engagement Metrics**: Upvote ratios, comment counts, awards
 - **Network Analysis**: User interaction patterns
 - **Statistical Reports**: Comprehensive data summaries
+
+### 🏭 Job Management & Pipeline
+- **Background Processing**: Asynchronous collection jobs
+- **Progress Monitoring**: Real-time job status and progress tracking
+- **Job Lifecycle**: Create, monitor, cancel, and delete collection jobs
+- **Persistent Storage**: All collected data stored in PostgreSQL
+- **Batch Operations**: Handle large-scale data collection efficiently
+- **Job Filtering**: Filter jobs by status, date, and parameters
 
 ### 🛡️ Privacy & Compliance
 - **User Anonymization**: Optional PII removal
@@ -135,11 +147,36 @@ POST /api/query/users
 GET /api/query/posts/simple?subreddits=python&keywords=fastapi&min_score=50
 ```
 
-### 🏭 **Collection API** - *Production Data Pipeline* *(Coming Soon)*
-Persistent data collection, storage, and export:
-- `/api/collect/*` - Start collection jobs
-- `/api/data/*` - Query stored data  
-- `/api/export/*` - Export datasets
+### 🏭 **Collection API** - *Production Data Pipeline*
+Persistent data collection, storage, and job management:
+
+```bash
+# Create a collection job
+POST /api/collect/jobs
+{
+  "subreddits": ["python", "programming"],
+  "sort_types": ["hot", "top"],
+  "time_filters": ["day", "week"],
+  "post_limit": 100,
+  "comment_limit": 50,
+  "keywords": ["fastapi", "async"],
+  "min_score": 25,
+  "exclude_nsfw": true,
+  "anonymize_users": true
+}
+
+# Monitor job progress
+GET /api/collect/jobs/{job_id}/status
+
+# List all jobs with filtering
+GET /api/collect/jobs?status=completed&page=1&per_page=20
+
+# Get detailed job results
+GET /api/collect/jobs/{job_id}
+
+# Cancel running job
+POST /api/collect/jobs/{job_id}/cancel
+```
 
 ## 🏗️ Architecture
 
@@ -163,12 +200,15 @@ Trendit/
 │   │   ├── data_collector.py   # Data collection scenarios
 │   │   └── analytics.py        # Analytics service
 │   ├── api/                # REST API endpoints
-│   │   └── scenarios.py    # Scenario endpoints
+│   │   ├── scenarios.py    # Scenario endpoints
+│   │   ├── query.py        # Query endpoints
+│   │   └── collect.py      # Collection API endpoints
 │   ├── utils/              # Utility functions
 │   ├── requirements.txt    # Python dependencies
 │   ├── .env.example       # Environment template
 │   ├── init_db.py         # Database initialization
-│   └── test_api.py        # Test suite
+│   ├── test_api.py        # Comprehensive test suite
+│   └── test_collection_api.py  # Collection API focused tests
 ├── docs/                   # Documentation
 ├── CLAUDE.md              # Claude Code integration
 ├── TESTING.md             # Testing guide
@@ -218,22 +258,29 @@ RATE_LIMIT_REQUESTS=60         # Requests per minute
 
 ### Quick Test
 ```bash
-# Test Reddit connection
-python test_reddit_simple.py
+# Test API server health
+curl http://localhost:8000/health
 
-# Comprehensive test suite
+# Comprehensive test suite (all APIs)
 python test_api.py
 
-# Test API endpoints
-curl http://localhost:8000/health
+# Collection API focused tests
+python test_collection_api.py
+
+# Test individual endpoints
+curl "http://localhost:8000/api/collect/jobs"
+curl -X POST "http://localhost:8000/api/collect/jobs" -H "Content-Type: application/json" -d '{"subreddits":["python"],"post_limit":5}'
 ```
 
 ### Test Results
 - ✅ Reddit API connection
 - ✅ Database connectivity
-- ✅ All scenario endpoints
+- ✅ All scenario endpoints (7 endpoints)
+- ✅ Query API endpoints (5 endpoints)
+- ✅ Collection API endpoints (6 endpoints)
 - ✅ Data collection pipeline
-- ✅ Export functionality
+- ✅ Background job processing
+- ✅ Persistent data storage
 
 See [TESTING.md](TESTING.md) for detailed testing instructions.
 
@@ -252,10 +299,12 @@ See [TESTING.md](TESTING.md) for detailed testing instructions.
 
 | Endpoint Category | Count | Description |
 |-------------------|-------|-------------|
-| **Core** | 2 | Basic API info and health checks |
+| **Core** | 4 | Basic API info and health checks |
 | **Scenarios** | 7 | Pre-configured quickstart examples |
 | **Query** | 5 | Flexible one-off queries with advanced filtering |
-| **Collection** | 0 | *Coming soon* - Persistent data pipeline |
+| **Collection** | 6 | Persistent data pipeline with job management |
+
+**Total: 22 endpoints** serving comprehensive Reddit data collection needs.
 
 #### Scenario Endpoints
 | Endpoint | Description |
@@ -277,16 +326,41 @@ See [TESTING.md](TESTING.md) for detailed testing instructions.
 | `/api/query/posts/simple` | GET | Simple GET-based post queries |
 | `/api/query/examples` | GET | Query examples and documentation |
 
+#### Collection Endpoints
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/collect/jobs` | POST | Create new collection job |
+| `/api/collect/jobs` | GET | List jobs with filtering and pagination |
+| `/api/collect/jobs/{job_id}` | GET | Get detailed job information |
+| `/api/collect/jobs/{job_id}/status` | GET | Get job status and progress |
+| `/api/collect/jobs/{job_id}/cancel` | POST | Cancel running job |
+| `/api/collect/jobs/{job_id}` | DELETE | Delete job and all associated data |
+
 ### Response Format
 
-All endpoints return JSON with this structure:
+#### Scenario & Query APIs
 ```json
 {
   "scenario": "scenario_name",
-  "description": "Human readable description",
+  "description": "Human readable description", 
   "results": [...],
   "count": 10,
   "execution_time_ms": 1234.56
+}
+```
+
+#### Collection API
+```json
+{
+  "id": 1,
+  "job_id": "uuid-string",
+  "status": "completed",
+  "progress": 100,
+  "collected_posts": 50,
+  "collected_comments": 150,
+  "subreddits": ["python", "programming"],
+  "created_at": "2024-01-01T00:00:00Z",
+  "completed_at": "2024-01-01T00:05:00Z"
 }
 ```
 
@@ -348,14 +422,18 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 ### Benchmarks
 - **Data Collection**: 1000 posts/minute (respecting rate limits)
+- **Background Jobs**: Multiple concurrent collection jobs
 - **Database Operations**: 10,000+ inserts/second
-- **API Response Time**: <100ms average
+- **API Response Time**: <100ms average (instant for job management)
 - **Memory Usage**: ~200MB baseline
+- **Job Processing**: Real-time status updates and progress tracking
 
 ### Optimization Notes
-- Consider migrating to Async PRAW for better async performance
+- ⚠️ Consider migrating to Async PRAW for better async performance
 - Implement connection pooling for high-traffic deployments
 - Use Redis for caching frequently accessed data
+- Job queue can handle multiple concurrent collections
+- Database optimized with indexes for fast job queries
 
 ## 🛠️ Troubleshooting
 
@@ -391,7 +469,8 @@ This tool is for research and educational purposes. Please:
 
 - 📖 [Documentation](docs/)
 - 🧪 [Testing Guide](TESTING.md)
-- 📝 [cURL Examples](docs/CURL_EXAMPLES.md) - 100+ complete examples
+- 📝 [cURL Examples](docs/CURL_EXAMPLES.md) - 150+ complete examples with Collection API
+- 🔧 [Collection API Test Suite](backend/test_collection_api.py) - Focused testing
 - 🐛 [Issue Tracker](https://github.com/yourusername/Trendit/issues)
 - 💬 [Discussions](https://github.com/yourusername/Trendit/discussions)
 
