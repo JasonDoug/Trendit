@@ -10,7 +10,7 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-class RedditClient:
+class RedditClient:                             
     """
     Comprehensive Reddit API client using PRAW
     """
