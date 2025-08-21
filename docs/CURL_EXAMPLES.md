@@ -827,6 +827,377 @@ for sub, count in subreddits.items():
 "
 ```
 
+## Data API - Query Stored Data
+
+### Summary and Recent Data
+```bash
+# Get data collection summary
+curl -X GET "http://localhost:8000/api/data/summary"
+
+# Get recent posts from all collections
+curl -X GET "http://localhost:8000/api/data/posts/recent?limit=10"
+
+# Get recent comments from all collections  
+curl -X GET "http://localhost:8000/api/data/comments/recent?limit=15"
+```
+
+### Advanced Post Queries
+```bash
+# Query posts from specific subreddits
+curl -X POST "http://localhost:8000/api/data/posts" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subreddits": ["Python", "programming"],
+    "limit": 20,
+    "sort_by": "score",
+    "sort_order": "desc"
+  }'
+
+# High-quality posts with keyword filtering
+curl -X POST "http://localhost:8000/api/data/posts" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subreddits": ["Python"],
+    "keywords": ["fastapi", "async", "performance"],
+    "min_score": 50,
+    "min_upvote_ratio": 0.85,
+    "exclude_keywords": ["beginner", "help"],
+    "limit": 15,
+    "sort_by": "upvote_ratio",
+    "sort_order": "desc"
+  }'
+
+# Posts from specific collection jobs
+curl -X POST "http://localhost:8000/api/data/posts" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "collection_job_ids": ["2359bab0-5a7a-4b1f-98fe-2db1c54eb5b9"],
+    "min_score": 10,
+    "limit": 25
+  }'
+
+# Date range filtering
+curl -X POST "http://localhost:8000/api/data/posts" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subreddits": ["MachineLearning"],
+    "date_from": "2024-08-01T00:00:00Z",
+    "date_to": "2024-08-31T23:59:59Z",
+    "min_score": 100,
+    "limit": 30
+  }'
+
+# Content type filtering
+curl -X POST "http://localhost:8000/api/data/posts" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subreddits": ["webdev"],
+    "content_types": ["text", "link"],
+    "exclude_nsfw": true,
+    "exclude_stickied": true,
+    "min_comments": 5,
+    "limit": 20
+  }'
+
+# Author filtering
+curl -X POST "http://localhost:8000/api/data/posts" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subreddits": ["python"],
+    "authors": ["specific_user"],
+    "exclude_authors": ["AutoModerator", "bot"],
+    "exclude_deleted": true,
+    "limit": 15
+  }'
+```
+
+### Advanced Comment Queries
+```bash
+# Query comments with keyword filtering
+curl -X POST "http://localhost:8000/api/data/comments" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subreddits": ["Python", "programming"],
+    "keywords": ["architecture", "design", "pattern"],
+    "min_score": 15,
+    "max_depth": 3,
+    "limit": 25
+  }'
+
+# Comments from specific posts
+curl -X POST "http://localhost:8000/api/data/comments" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "post_ids": [1, 2, 3],
+    "min_score": 10,
+    "exclude_deleted": true,
+    "sort_by": "score",
+    "sort_order": "desc",
+    "limit": 50
+  }'
+
+# Deep thread analysis
+curl -X POST "http://localhost:8000/api/data/comments" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subreddits": ["MachineLearning"],
+    "min_score": 20,
+    "min_depth": 1,
+    "max_depth": 5,
+    "keywords": ["explanation", "detailed"],
+    "exclude_authors": ["AutoModerator"],
+    "limit": 30
+  }'
+
+# Comments from specific collection jobs
+curl -X POST "http://localhost:8000/api/data/comments" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "collection_job_ids": ["2359bab0-5a7a-4b1f-98fe-2db1c54eb5b9"],
+    "min_score": 5,
+    "limit": 40
+  }'
+```
+
+### Analytics and Insights
+```bash
+# Get analytics for a specific collection job
+curl -X GET "http://localhost:8000/api/data/analytics/2359bab0-5a7a-4b1f-98fe-2db1c54eb5b9"
+
+# Get analytics with pretty formatting
+curl -s "http://localhost:8000/api/data/analytics/2359bab0-5a7a-4b1f-98fe-2db1c54eb5b9" | jq
+
+# Check if analytics exist for a job
+curl -s "http://localhost:8000/api/data/analytics/2359bab0-5a7a-4b1f-98fe-2db1c54eb5b9" | \
+  python -c "import sys,json; data=json.load(sys.stdin); print('✅ Analytics available' if 'analytics' in data else '❌ No analytics')"
+```
+
+## Export API - Data Export in Multiple Formats
+
+### Supported Formats Information
+```bash
+# List all supported export formats
+curl -X GET "http://localhost:8000/api/export/formats"
+
+# Get format information with pretty output
+curl -s "http://localhost:8000/api/export/formats" | jq '.supported_formats'
+```
+
+### Export Posts Data
+```bash
+# Export posts as CSV
+curl -X POST "http://localhost:8000/api/export/posts/csv" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subreddits": ["Python"],
+    "limit": 100,
+    "sort_by": "score",
+    "sort_order": "desc"
+  }' --output posts_export.csv
+
+# Export high-quality posts as JSON
+curl -X POST "http://localhost:8000/api/export/posts/json" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subreddits": ["Python", "programming"],
+    "min_score": 50,
+    "min_upvote_ratio": 0.8,
+    "keywords": ["tutorial", "guide", "best practices"],
+    "limit": 50
+  }' --output quality_posts.json
+
+# Export posts as JSONL for streaming processing
+curl -X POST "http://localhost:8000/api/export/posts/jsonl" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subreddits": ["MachineLearning"],
+    "keywords": ["research", "paper", "study"],
+    "min_score": 100,
+    "limit": 200
+  }' --output ml_research.jsonl
+
+# Export posts as Parquet for analytics
+curl -X POST "http://localhost:8000/api/export/posts/parquet" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subreddits": ["datascience", "analytics"],
+    "date_from": "2024-08-01T00:00:00Z",
+    "date_to": "2024-08-31T23:59:59Z",
+    "limit": 1000
+  }' --output posts_analytics.parquet
+
+# Export posts with advanced filtering
+curl -X POST "http://localhost:8000/api/export/posts/csv" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "collection_job_ids": ["2359bab0-5a7a-4b1f-98fe-2db1c54eb5b9"],
+    "min_score": 25,
+    "exclude_nsfw": true,
+    "exclude_stickied": true,
+    "content_types": ["text", "link"]
+  }' --output filtered_posts.csv
+```
+
+### Export Comments Data
+```bash
+# Export comments as CSV
+curl -X POST "http://localhost:8000/api/export/comments/csv" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subreddits": ["Python"],
+    "min_score": 10,
+    "max_depth": 3,
+    "limit": 500
+  }' --output comments_export.csv
+
+# Export high-quality technical comments as JSON
+curl -X POST "http://localhost:8000/api/export/comments/json" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subreddits": ["programming", "webdev"],
+    "keywords": ["architecture", "design", "performance"],
+    "min_score": 20,
+    "exclude_authors": ["AutoModerator"],
+    "limit": 200
+  }' --output technical_comments.json
+
+# Export comment threads as JSONL
+curl -X POST "http://localhost:8000/api/export/comments/jsonl" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "post_ids": [1, 2, 3, 4, 5],
+    "min_depth": 1,
+    "max_depth": 4,
+    "sort_by": "score",
+    "sort_order": "desc"
+  }' --output comment_threads.jsonl
+
+# Export comments for data analysis
+curl -X POST "http://localhost:8000/api/export/comments/parquet" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subreddits": ["MachineLearning", "artificial"],
+    "keywords": ["explanation", "analysis"],
+    "min_score": 15,
+    "limit": 1000
+  }' --output comments_analysis.parquet
+```
+
+### Export Complete Job Data
+```bash
+# Export complete job data as JSON (includes job metadata + posts + comments)
+curl -X GET "http://localhost:8000/api/export/job/2359bab0-5a7a-4b1f-98fe-2db1c54eb5b9/json" \
+  --output complete_job.json
+
+# Export job data as CSV (posts only)
+curl -X GET "http://localhost:8000/api/export/job/2359bab0-5a7a-4b1f-98fe-2db1c54eb5b9/csv" \
+  --output job_posts.csv
+
+# Export job data as JSONL for processing
+curl -X GET "http://localhost:8000/api/export/job/2359bab0-5a7a-4b1f-98fe-2db1c54eb5b9/jsonl" \
+  --output job_data.jsonl
+
+# Export job data as Parquet for analytics
+curl -X GET "http://localhost:8000/api/export/job/2359bab0-5a7a-4b1f-98fe-2db1c54eb5b9/parquet" \
+  --output job_analytics.parquet
+```
+
+### Export Workflows and Examples
+```bash
+# Export workflow: Query -> Filter -> Export
+# 1. Find high-quality posts
+POSTS_QUERY='{
+  "subreddits": ["Python", "programming"],
+  "keywords": ["best practices", "architecture", "design"],
+  "min_score": 100,
+  "min_upvote_ratio": 0.9,
+  "limit": 50
+}'
+
+# 2. Export as multiple formats for different use cases
+echo "Exporting for spreadsheet analysis..."
+curl -X POST "http://localhost:8000/api/export/posts/csv" \
+  -H "Content-Type: application/json" \
+  -d "$POSTS_QUERY" --output analysis.csv
+
+echo "Exporting for API integration..."
+curl -X POST "http://localhost:8000/api/export/posts/json" \
+  -H "Content-Type: application/json" \
+  -d "$POSTS_QUERY" --output integration.json
+
+echo "Exporting for data science..."
+curl -X POST "http://localhost:8000/api/export/posts/parquet" \
+  -H "Content-Type: application/json" \
+  -d "$POSTS_QUERY" --output data_science.parquet
+
+echo "✅ Export workflow completed!"
+
+# Batch export multiple collection jobs
+echo "Batch exporting collection jobs..."
+JOBS=("2359bab0-5a7a-4b1f-98fe-2db1c54eb5b9" "fdd1714e-2f34-4134-bad9-8625581ebccf")
+
+for job_id in "${JOBS[@]}"; do
+  echo "Exporting job: $job_id"
+  curl -s -X GET "http://localhost:8000/api/export/job/$job_id/csv" \
+    --output "job_${job_id:0:8}.csv"
+  echo "✅ Exported job_${job_id:0:8}.csv"
+done
+
+# Verify exports
+echo -e "\nExport verification:"
+ls -la *.csv *.json *.parquet 2>/dev/null | wc -l | \
+  python -c "import sys; count=int(sys.stdin.read().strip()); print(f'✅ {count} files exported successfully')"
+```
+
+### Export Data Validation
+```bash
+# Test export formats
+echo "Testing export formats..."
+
+# Test CSV export and verify structure
+curl -X POST "http://localhost:8000/api/export/posts/csv" \
+  -H "Content-Type: application/json" \
+  -d '{"subreddits": ["Python"], "limit": 3}' \
+  --output test.csv
+
+if [ -f "test.csv" ]; then
+  echo "✅ CSV export successful"
+  echo "CSV headers: $(head -1 test.csv)"
+  echo "CSV rows: $(wc -l < test.csv)"
+  rm test.csv
+fi
+
+# Test JSON export and verify structure
+curl -s -X POST "http://localhost:8000/api/export/posts/json" \
+  -H "Content-Type: application/json" \
+  -d '{"subreddits": ["Python"], "limit": 2}' | \
+  python -c "
+import sys,json
+try:
+    data=json.load(sys.stdin)
+    print(f'✅ JSON export successful - {len(data)} records')
+    if data:
+        print(f'JSON keys: {list(data[0].keys())[:5]}...')
+except:
+    print('❌ JSON export failed')
+"
+
+# Test JSONL export
+curl -s -X POST "http://localhost:8000/api/export/posts/jsonl" \
+  -H "Content-Type: application/json" \
+  -d '{"subreddits": ["Python"], "limit": 2}' | \
+  python -c "
+import sys,json
+lines = sys.stdin.read().strip().split('\n')
+try:
+    for line in lines[:1]:
+        json.loads(line)
+    print(f'✅ JSONL export successful - {len(lines)} lines')
+except:
+    print('❌ JSONL export failed')
+"
+```
+
 ## Error Testing
 
 ```bash
@@ -843,4 +1214,17 @@ curl -X GET "http://localhost:8000/api/scenarios/1/subreddit-keyword-search?subr
 
 # Test invalid date range
 curl -X GET "http://localhost:8000/api/scenarios/1/subreddit-keyword-search?subreddit=python&keywords=test&date_from=2024-12-31&date_to=2024-01-01"
+
+# Test invalid export format
+curl -X POST "http://localhost:8000/api/export/posts/invalid_format" \
+  -H "Content-Type: application/json" \
+  -d '{"subreddits": ["Python"], "limit": 5}'
+
+# Test export with no matching data
+curl -X POST "http://localhost:8000/api/export/posts/csv" \
+  -H "Content-Type: application/json" \
+  -d '{"subreddits": ["NonExistentSubreddit"], "limit": 5}'
+
+# Test data query with invalid job ID
+curl -X GET "http://localhost:8000/api/data/analytics/invalid-job-id"
 ```

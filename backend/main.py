@@ -9,6 +9,8 @@ from models.database import engine, Base
 from api.scenarios import router as scenarios_router
 from api.query import router as query_router
 from api.collect import router as collect_router
+from api.data import router as data_router
+from api.export import router as export_router
 import os
 from dotenv import load_dotenv
 
@@ -60,6 +62,8 @@ app.add_middleware(
 app.include_router(scenarios_router)
 app.include_router(query_router)
 app.include_router(collect_router)
+app.include_router(data_router)
+app.include_router(export_router)
 
 @app.get("/")
 async def root():
@@ -75,7 +79,9 @@ async def root():
             "Multi-subreddit trending analysis",
             "Temporal and engagement analytics",
             "Real-time data streaming",
-            "Export to multiple formats"
+            "Persistent data pipeline with job management",
+            "Advanced data querying and analytics",
+            "Export to multiple formats (CSV, JSON, JSONL, Parquet)"
         ],
         "scenarios": {
             "1": "Search posts by keywords and date range in specific subreddits",
@@ -87,6 +93,9 @@ async def root():
         },
         "endpoints": {
             "scenarios": "/api/scenarios/examples",
+            "collection": "/api/collect/jobs",
+            "data_query": "/api/data/summary",
+            "export": "/api/export/formats",
             "docs": "/docs",
             "redoc": "/redoc"
         },
