@@ -9,6 +9,7 @@ import logging
 from models.database import get_db
 from models.models import CollectionJob, JobStatus, SortType, TimeFilter, RedditPost, RedditComment
 from services.data_collector import DataCollector
+from services.sentiment_analyzer import sentiment_analyzer
 
 router = APIRouter(prefix="/api/collect", tags=["collection"])
 logger = logging.getLogger(__name__)
@@ -320,7 +321,11 @@ async def run_collection_job(job_id: int, job_params: Dict[str, Any]):
                                 final_limit=min(job.post_limit, 100)
                             )
                         
-                        # Store collected data
+                        # Store collected data with sentiment analysis
+                        posts_for_sentiment = []
+                        reddit_posts = []
+                        
+                        # Prepare posts and sentiment analysis
                         for post_data in posts_data:
                             try:
                                 # Create RedditPost record
@@ -346,6 +351,36 @@ async def run_collection_job(job_id: int, job_params: Dict[str, Any]):
                                     created_utc=created_utc
                                 )
                                 
+                                reddit_posts.append(reddit_post)
+                                
+                                # Prepare text for sentiment analysis
+                                title = post_data.get('title', '')
+                                selftext = post_data.get('selftext', '')
+                                combined_text = f"{title}. {selftext}".strip()
+                                posts_for_sentiment.append(combined_text)
+                                
+                            except Exception as e:
+                                logger.error(f"Error preparing post {post_data.get('id')}: {e}")
+                                continue
+                        
+                        # Run sentiment analysis for all posts in batch
+                        sentiment_scores = []
+                        if sentiment_analyzer.is_available() and posts_for_sentiment:
+                            try:
+                                async with sentiment_analyzer:
+                                    logger.info(f"Analyzing sentiment for {len(posts_for_sentiment)} posts")
+                                    sentiment_scores = await sentiment_analyzer.analyze_batch(posts_for_sentiment)
+                                    logger.info(f"Completed sentiment analysis: {len([s for s in sentiment_scores if s is not None])} successful")
+                            except Exception as e:
+                                logger.warning(f"Sentiment analysis failed: {e}")
+                                sentiment_scores = [None] * len(posts_for_sentiment)
+                        else:
+                            sentiment_scores = [None] * len(posts_for_sentiment)
+                        
+                        # Store posts with sentiment scores
+                        for reddit_post, sentiment_score in zip(reddit_posts, sentiment_scores):
+                            try:
+                                reddit_post.sentiment_score = sentiment_score
                                 db.add(reddit_post)
                                 db.flush()  # Get the ID without committing
                                 

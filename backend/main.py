@@ -11,6 +11,7 @@ from api.query import router as query_router
 from api.collect import router as collect_router
 from api.data import router as data_router
 from api.export import router as export_router
+from api.sentiment import router as sentiment_router
 import os
 from dotenv import load_dotenv
 
@@ -64,6 +65,7 @@ app.include_router(query_router)
 app.include_router(collect_router)
 app.include_router(data_router)
 app.include_router(export_router)
+app.include_router(sentiment_router)
 
 @app.get("/")
 async def root():
@@ -96,6 +98,7 @@ async def root():
             "collection": "/api/collect/jobs",
             "data_query": "/api/data/summary",
             "export": "/api/export/formats",
+            "sentiment": "/api/sentiment/status",
             "docs": "/docs",
             "redoc": "/redoc"
         },

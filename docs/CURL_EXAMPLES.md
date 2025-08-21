@@ -1198,6 +1198,124 @@ except:
 "
 ```
 
+## Sentiment Analysis API - AI-Powered Content Analysis
+
+### Service Status and Configuration
+```bash
+# Check sentiment analysis availability and configuration
+curl -X GET "http://localhost:8000/api/sentiment/status"
+
+# Test sentiment analysis with sample data
+curl -X GET "http://localhost:8000/api/sentiment/test"
+```
+
+### Single Text Analysis
+```bash
+# Analyze sentiment of a single text
+curl -X POST "http://localhost:8000/api/sentiment/analyze" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "I absolutely love this new feature! It works perfectly and makes everything so much easier."
+  }'
+
+# Analyze a negative sentiment text
+curl -X POST "http://localhost:8000/api/sentiment/analyze" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "This is terrible. I hate how complicated and broken everything is."
+  }'
+
+# Analyze neutral content
+curl -X POST "http://localhost:8000/api/sentiment/analyze" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "The documentation explains the basic installation process and configuration options."
+  }'
+```
+
+### Batch Text Analysis
+```bash
+# Analyze multiple texts in one request
+curl -X POST "http://localhost:8000/api/sentiment/analyze-batch" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "texts": [
+      "FastAPI is amazing! I love how easy it is to build APIs.",
+      "This framework is terrible. Documentation is confusing.",
+      "It works fine, nothing special but gets the job done.",
+      "Excellent performance and great developer experience!",
+      "Average framework, has some issues but overall okay."
+    ]
+  }'
+
+# Analyze Reddit post-style content
+curl -X POST "http://localhost:8000/api/sentiment/analyze-batch" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "texts": [
+      "Just deployed my first FastAPI app to production. The async support is incredible!",
+      "Can someone help? My API keeps throwing 500 errors and I cannot figure out why.",
+      "Comparing Django vs FastAPI for our next project. Both have pros and cons.",
+      "TIL: You can use background tasks in FastAPI. Game changer for my use case!"
+    ]
+  }'
+```
+
+### Sentiment Analysis Integration
+The sentiment analysis service is automatically integrated into the data collection pipeline:
+
+```bash
+# Configure OpenRouter API key (required for sentiment analysis)
+export OPENROUTER_API_KEY="your_api_key_here"
+
+# Create collection job - posts will automatically get sentiment scores
+curl -X POST "http://localhost:8000/api/collect/jobs" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subreddits": ["python", "programming"],
+    "sort_types": ["hot"],
+    "time_filters": ["day"],
+    "post_limit": 10,
+    "comment_limit": 5,
+    "min_score": 25,
+    "exclude_nsfw": true,
+    "anonymize_users": true
+  }'
+
+# Query posts with sentiment scores
+curl -X POST "http://localhost:8000/api/data/posts" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "limit": 10,
+    "sort_by": "sentiment_score",
+    "sort_order": "desc"
+  }' | jq '.results[] | {title: .title, sentiment_score: .sentiment_score, subreddit: .subreddit}'
+
+# Export data with sentiment analysis
+curl -X POST "http://localhost:8000/api/export/posts/csv" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subreddits": ["python"],
+    "min_score": 50,
+    "limit": 100
+  }' --output posts_with_sentiment.csv
+```
+
+### Sentiment Analysis Features
+- **Powered by OpenRouter**: Uses Claude 3 Haiku for fast, accurate sentiment analysis
+- **Batch Processing**: Efficiently analyzes multiple texts simultaneously
+- **Automatic Integration**: Posts are automatically analyzed during collection
+- **Graceful Degradation**: System works normally even without API key configured
+- **Detailed Statistics**: Provides sentiment distribution and analytics
+- **Export Support**: Sentiment scores included in all export formats
+
+### Setup Instructions
+1. Sign up for OpenRouter at https://openrouter.ai/
+2. Get your API key from the dashboard
+3. Set the environment variable: `OPENROUTER_API_KEY=your_key`
+4. Restart the server to enable sentiment analysis
+5. New collection jobs will automatically include sentiment analysis
+
 ## Error Testing
 
 ```bash

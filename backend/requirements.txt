@@ -17,6 +17,7 @@ numpy==1.26.4
 # Async Support
 asyncio-mqtt==0.16.2
 asyncpg==0.30.0
+aiohttp==3.11.10
 
 # Configuration
 python-dotenv==1.0.1

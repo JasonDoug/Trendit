@@ -73,7 +73,8 @@ A powerful, production-ready API built with FastAPI for collecting, analyzing, a
 
 ### 🔍 Search & Analytics
 - **Keyword Search**: Search across titles, content, and comments
-- **Sentiment Analysis**: Automated content sentiment scoring (OpenRouter integration)
+- **AI-Powered Sentiment Analysis**: Automated content sentiment scoring (OpenRouter + Claude 3 Haiku)
+- **Advanced Data Querying**: Query stored data with complex filtering and analytics
 - **Trend Analysis**: Track post performance over time
 - **Engagement Metrics**: Upvote ratios, comment counts, awards
 - **Network Analysis**: User interaction patterns
@@ -94,14 +95,16 @@ A powerful, production-ready API built with FastAPI for collecting, analyzing, a
 - **Terms Adherence**: Reddit API terms compliance
 
 ### 💾 Export & Storage
-- **Multiple Formats**: CSV, JSON, JSONL, Parquet
+- **Multiple Export Formats**: CSV, JSON, JSONL, Parquet with advanced filtering
+- **Data API**: Query stored data with complex filtering and analytics
 - **PostgreSQL Integration**: Scalable database storage
-- **Batch Processing**: Handle large datasets efficiently
+- **Batch Processing**: Handle large datasets efficiently  
 - **Data Deduplication**: Prevent duplicate entries
+- **Export Analytics**: Comprehensive data export with sentiment scores
 
 ## 📖 API Architecture
 
-Trendit provides a **three-tier API architecture** for different use cases:
+Trendit provides a **comprehensive five-tier API architecture** for different use cases:
 
 ### 🚀 **Scenarios API** - *Quickstart Examples*
 Pre-configured common use cases for learning and demos:
@@ -178,14 +181,104 @@ GET /api/collect/jobs/{job_id}
 POST /api/collect/jobs/{job_id}/cancel
 ```
 
+### 📊 **Data API** - *Query Stored Data*
+Query and analyze collected data with advanced filtering:
+
+```bash
+# Get collection summary
+GET /api/data/summary
+
+# Query posts with advanced filtering
+POST /api/data/posts
+{
+  "subreddits": ["python", "programming"],
+  "keywords": ["fastapi", "async"],
+  "min_score": 100,
+  "min_upvote_ratio": 0.9,
+  "sort_by": "sentiment_score",
+  "sort_order": "desc",
+  "limit": 50
+}
+
+# Query comments with depth filtering
+POST /api/data/comments
+{
+  "subreddits": ["MachineLearning"],
+  "min_score": 20,
+  "max_depth": 3,
+  "keywords": ["explanation", "detailed"]
+}
+
+# Get analytics for specific collection job
+GET /api/data/analytics/{job_id}
+```
+
+### 📤 **Export API** - *Data Export in Multiple Formats*
+Export collected data in various formats with filtering:
+
+```bash
+# Export posts as CSV with filtering
+POST /api/export/posts/csv
+{
+  "subreddits": ["python"],
+  "min_score": 50,
+  "keywords": ["tutorial", "guide"],
+  "limit": 1000
+}
+
+# Export complete job data as JSON
+GET /api/export/job/{job_id}/json
+
+# Export comments as Parquet for analytics
+POST /api/export/comments/parquet
+{
+  "min_score": 15,
+  "exclude_deleted": true,
+  "limit": 5000
+}
+
+# Get supported export formats
+GET /api/export/formats
+```
+
+### 🧠 **Sentiment API** - *AI-Powered Content Analysis*
+Analyze sentiment of Reddit content using OpenRouter + Claude:
+
+```bash
+# Check sentiment analysis status
+GET /api/sentiment/status
+
+# Analyze single text sentiment
+POST /api/sentiment/analyze
+{
+  "text": "I love this new feature! It works perfectly."
+}
+
+# Batch analyze multiple texts
+POST /api/sentiment/analyze-batch
+{
+  "texts": [
+    "FastAPI is amazing for building APIs!",
+    "This is terrible, doesn't work at all.",
+    "It's okay, nothing special but functional."
+  ]
+}
+
+# Test sentiment analysis with samples
+GET /api/sentiment/test
+```
+
 ## 🏗️ Architecture
 
 ### Backend Stack
 - **FastAPI**: Modern, fast web framework
 - **PRAW**: Python Reddit API Wrapper
 - **PostgreSQL**: Robust relational database
-- **SQLAlchemy**: Python ORM
+- **SQLAlchemy**: Python ORM with comprehensive indexing
 - **Pydantic**: Data validation and serialization
+- **OpenRouter + Claude**: AI-powered sentiment analysis
+- **aiohttp**: Async HTTP client for external APIs
+- **Pandas**: Data processing and export capabilities
 
 ### Project Structure
 ```
@@ -198,11 +291,15 @@ Trendit/
 │   ├── services/           # Business logic
 │   │   ├── reddit_client.py    # Reddit API client
 │   │   ├── data_collector.py   # Data collection scenarios
-│   │   └── analytics.py        # Analytics service
+│   │   ├── analytics.py        # Analytics service
+│   │   └── sentiment_analyzer.py  # AI sentiment analysis
 │   ├── api/                # REST API endpoints
 │   │   ├── scenarios.py    # Scenario endpoints
 │   │   ├── query.py        # Query endpoints
-│   │   └── collect.py      # Collection API endpoints
+│   │   ├── collect.py      # Collection API endpoints
+│   │   ├── data.py         # Data query endpoints
+│   │   ├── export.py       # Export API endpoints
+│   │   └── sentiment.py    # Sentiment analysis endpoints
 │   ├── utils/              # Utility functions
 │   ├── requirements.txt    # Python dependencies
 │   ├── .env.example       # Environment template
@@ -238,8 +335,10 @@ RELOAD=true
 # Logging Configuration
 LOG_LEVEL=INFO
 
-# Optional: Advanced Features
-OPENAI_API_KEY=your_openai_key  # For sentiment analysis
+# Sentiment Analysis (Optional)
+OPENROUTER_API_KEY=your_openrouter_key  # For AI-powered sentiment analysis
+
+# Optional: Advanced Features  
 RATE_LIMIT_REQUESTS=60         # Requests per minute
 ```
 
@@ -270,6 +369,11 @@ python test_collection_api.py
 # Test individual endpoints
 curl "http://localhost:8000/api/collect/jobs"
 curl -X POST "http://localhost:8000/api/collect/jobs" -H "Content-Type: application/json" -d '{"subreddits":["python"],"post_limit":5}'
+
+# Test sentiment analysis
+curl "http://localhost:8000/api/sentiment/status" | python -m json.tool
+curl "http://localhost:8000/api/data/summary" | python -m json.tool
+curl "http://localhost:8000/api/export/formats" | python -m json.tool
 ```
 
 ### Test Results
@@ -278,9 +382,13 @@ curl -X POST "http://localhost:8000/api/collect/jobs" -H "Content-Type: applicat
 - ✅ All scenario endpoints (7 endpoints)
 - ✅ Query API endpoints (5 endpoints)
 - ✅ Collection API endpoints (6 endpoints)
-- ✅ Data collection pipeline
+- ✅ Data API endpoints (4 endpoints)
+- ✅ Export API endpoints (4 endpoints)
+- ✅ Sentiment Analysis endpoints (4 endpoints)
+- ✅ Data collection pipeline with sentiment analysis
 - ✅ Background job processing
 - ✅ Persistent data storage
+- ✅ Multi-format data export capabilities
 
 See [TESTING.md](TESTING.md) for detailed testing instructions.
 
@@ -303,8 +411,11 @@ See [TESTING.md](TESTING.md) for detailed testing instructions.
 | **Scenarios** | 7 | Pre-configured quickstart examples |
 | **Query** | 5 | Flexible one-off queries with advanced filtering |
 | **Collection** | 6 | Persistent data pipeline with job management |
+| **Data** | 4 | Query stored data with advanced analytics |
+| **Export** | 4 | Multi-format data export capabilities |
+| **Sentiment** | 4 | AI-powered content sentiment analysis |
 
-**Total: 22 endpoints** serving comprehensive Reddit data collection needs.
+**Total: 34 endpoints** serving comprehensive Reddit data collection, analysis, and export needs.
 
 #### Scenario Endpoints
 | Endpoint | Description |
@@ -335,6 +446,30 @@ See [TESTING.md](TESTING.md) for detailed testing instructions.
 | `/api/collect/jobs/{job_id}/status` | GET | Get job status and progress |
 | `/api/collect/jobs/{job_id}/cancel` | POST | Cancel running job |
 | `/api/collect/jobs/{job_id}` | DELETE | Delete job and all associated data |
+
+#### Data API Endpoints
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/data/summary` | GET | Get collection data summary and statistics |
+| `/api/data/posts` | POST | Query stored posts with advanced filtering |
+| `/api/data/comments` | POST | Query stored comments with advanced filtering |
+| `/api/data/analytics/{job_id}` | GET | Get analytics for specific collection job |
+
+#### Export API Endpoints  
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/export/formats` | GET | List supported export formats and features |
+| `/api/export/posts/{format}` | POST | Export posts in specified format with filtering |
+| `/api/export/comments/{format}` | POST | Export comments in specified format with filtering |
+| `/api/export/job/{job_id}/{format}` | GET | Export complete job data in specified format |
+
+#### Sentiment Analysis Endpoints
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/sentiment/status` | GET | Get sentiment analysis service status and config |
+| `/api/sentiment/analyze` | POST | Analyze sentiment of single text |
+| `/api/sentiment/analyze-batch` | POST | Analyze sentiment of multiple texts with stats |
+| `/api/sentiment/test` | GET | Test sentiment analysis with sample data |
 
 ### Response Format
 
@@ -429,7 +564,10 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 - **Job Processing**: Real-time status updates and progress tracking
 
 ### Optimization Notes
-- ⚠️ Consider migrating to Async PRAW for better async performance
+- ⚠️ Consider migrating to Async PRAW for better async performance  
+- ✅ AI-powered sentiment analysis with batch processing
+- ✅ Multi-format export capabilities (CSV, JSON, JSONL, Parquet)
+- ✅ Advanced data querying with comprehensive filtering
 - Implement connection pooling for high-traffic deployments
 - Use Redis for caching frequently accessed data
 - Job queue can handle multiple concurrent collections
@@ -451,6 +589,11 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 - Ensure virtual environment is activated
 - Run from `backend/` directory
 
+**Sentiment Analysis Not Working**
+- Verify `OPENROUTER_API_KEY` is set in `.env`
+- Check OpenRouter account has credits
+- Service works gracefully without API key (scores will be null)
+
 See [TESTING.md](TESTING.md) for detailed troubleshooting.
 
 ## 📄 License
@@ -469,8 +612,11 @@ This tool is for research and educational purposes. Please:
 
 - 📖 [Documentation](docs/)
 - 🧪 [Testing Guide](TESTING.md)
-- 📝 [cURL Examples](docs/CURL_EXAMPLES.md) - 150+ complete examples with Collection API
+- 📝 [cURL Examples](docs/CURL_EXAMPLES.md) - 200+ complete examples covering all APIs
 - 🔧 [Collection API Test Suite](backend/test_collection_api.py) - Focused testing
+- 🧠 [Sentiment Analysis Guide](docs/CURL_EXAMPLES.md#sentiment-analysis-api) - AI-powered content analysis
+- 📊 [Data API Documentation](docs/CURL_EXAMPLES.md#data-api) - Advanced querying capabilities
+- 📤 [Export API Guide](docs/CURL_EXAMPLES.md#export-api) - Multi-format data export
 - 🐛 [Issue Tracker](https://github.com/yourusername/Trendit/issues)
 - 💬 [Discussions](https://github.com/yourusername/Trendit/discussions)
 
@@ -478,8 +624,10 @@ This tool is for research and educational purposes. Please:
 
 - **PRAW**: Excellent Python Reddit API wrapper
 - **FastAPI**: Modern, fast Python web framework
+- **OpenRouter & Anthropic**: AI-powered sentiment analysis via Claude
 - **Reddit**: For providing a comprehensive API
 - **PostgreSQL**: Robust and reliable database system
+- **Pandas**: Powerful data processing and analysis library
 
 ---
 
