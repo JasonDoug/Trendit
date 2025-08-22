@@ -337,7 +337,7 @@ async def run_collection_job(job_id: int, job_params: Dict[str, Any]):
                                 
                                 reddit_post = RedditPost(
                                     collection_job_id=job.id,
-                                    reddit_id=post_data.get('id'),
+                                    reddit_id=post_data.get('reddit_id'),
                                     title=post_data.get('title'),
                                     selftext=post_data.get('selftext'),
                                     url=post_data.get('url'),
@@ -388,9 +388,33 @@ async def run_collection_job(job_id: int, job_params: Dict[str, Any]):
                                 
                                 # Collect comments if requested
                                 if job.comment_limit > 0:
-                                    # Placeholder for comment collection
-                                    # Would implement comment collection here
-                                    pass
+                                    try:
+                                        comments_data = await collector.get_top_comments_by_criteria(
+                                            post_id=reddit_post.reddit_id,
+                                            limit=min(job.comment_limit, 50)
+                                        )
+                                        
+                                        for comment_data in comments_data:
+                                            try:
+                                                reddit_comment = RedditComment(
+                                                    reddit_id=comment_data['reddit_id'],
+                                                    post_id=reddit_post.id,
+                                                    parent_id=comment_data.get('parent_id'),
+                                                    author=comment_data.get('author'),
+                                                    body=comment_data['body'],
+                                                    score=comment_data['score'],
+                                                    depth=comment_data.get('depth', 0),
+                                                    created_utc=comment_data['created_utc'],
+                                                    collected_at=datetime.utcnow()
+                                                )
+                                                db.add(reddit_comment)
+                                                total_collected_comments += 1
+                                            except Exception as e:
+                                                logger.error(f"Error storing comment: {e}")
+                                                continue
+                                    except Exception as e:
+                                        logger.warning(f"Error collecting comments for post {reddit_post.reddit_id}: {e}")
+                                        continue
                                 
                             except Exception as e:
                                 logger.error(f"Error storing post {post_data.get('id')}: {e}")

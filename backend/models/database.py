@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Database configuration
+# NOTE: SQLite is for development and testing only - use PostgreSQL for production
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./trendit.db")
 
 # SQLite requires check_same_thread=False for FastAPI

@@ -1,9 +1,9 @@
 import asyncio
 from typing import List, Dict, Any, Optional, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 from sqlalchemy.orm import Session
-from .reddit_client import RedditClient
+from .reddit_client_async import AsyncRedditClient
 from .analytics import AnalyticsService
 from models.models import CollectionJob, RedditPost, RedditComment, RedditUser, JobStatus
 from models.database import get_db
@@ -16,7 +16,7 @@ class DataCollector:
     """
     
     def __init__(self):
-        self.reddit_client = RedditClient()
+        self.reddit_client = AsyncRedditClient()
         self.analytics = AnalyticsService()
     
     # SCENARIO 1: Search posts in specific subreddit with date range and keywords
@@ -44,19 +44,28 @@ class DataCollector:
             # Search for posts containing keywords
             search_query = " OR ".join(keywords)
             
-            # Get posts from the time period (PRAW doesn't filter by date directly)
-            all_posts = self.reddit_client.search_posts(
-                query=search_query,
-                subreddit_name=subreddit,
-                sort="top",
-                time_filter="all",
-                limit=500  # Get more to filter by date
-            )
+            # Get posts from the time period (AsyncPRAW doesn't filter by date directly)
+            async with self.reddit_client as reddit:
+                all_posts = await reddit.search_posts(
+                    query=search_query,
+                    subreddit_name=subreddit,
+                    sort="top",
+                    time_filter="all",
+                    limit=500  # Get more to filter by date
+                )
             
             # Filter by date range and keywords
             filtered_posts = []
             for post in all_posts:
                 post_date = post['created_utc']
+                
+                # Ensure timezone-aware comparison
+                if post_date.tzinfo is None:
+                    post_date = post_date.replace(tzinfo=timezone.utc)
+                if date_from.tzinfo is None:
+                    date_from = date_from.replace(tzinfo=timezone.utc)
+                if date_to.tzinfo is None:
+                    date_to = date_to.replace(tzinfo=timezone.utc)
                 
                 # Check date range
                 if date_from <= post_date <= date_to:
@@ -107,19 +116,20 @@ class DataCollector:
             # Get hot/rising posts from each subreddit
             for subreddit in subreddits:
                 try:
-                    # Get hot posts (trending now)
-                    hot_posts = self.reddit_client.get_subreddit_posts(
-                        subreddit_name=subreddit,
-                        sort_type="hot",
-                        limit=limit_per_subreddit // 2
-                    )
-                    
-                    # Get rising posts (gaining momentum)
-                    rising_posts = self.reddit_client.get_subreddit_posts(
-                        subreddit_name=subreddit,
-                        sort_type="rising",
-                        limit=limit_per_subreddit // 2
-                    )
+                    async with self.reddit_client as reddit:
+                        # Get hot posts (trending now)
+                        hot_posts = await reddit.get_subreddit_posts(
+                            subreddit_name=subreddit,
+                            sort_type="hot",
+                            limit=limit_per_subreddit // 2
+                        )
+                        
+                        # Get rising posts (gaining momentum)
+                        rising_posts = await reddit.get_subreddit_posts(
+                            subreddit_name=subreddit,
+                            sort_type="rising",
+                            limit=limit_per_subreddit // 2
+                        )
                     
                     # Combine and add trending score
                     subreddit_posts = hot_posts + rising_posts
@@ -172,12 +182,13 @@ class DataCollector:
         """
         try:
             # Get posts from r/all
-            posts = self.reddit_client.get_subreddit_posts(
-                subreddit_name="all",
-                sort_type=sort_type,
-                time_filter=time_filter,
-                limit=limit
-            )
+            async with self.reddit_client as reddit:
+                posts = await reddit.get_subreddit_posts(
+                    subreddit_name="all",
+                    sort_type=sort_type,
+                    time_filter=time_filter,
+                    limit=limit
+                )
             
             logger.info(f"Retrieved top {len(posts)} {sort_type} posts from r/all for {time_filter}")
             return posts
@@ -205,11 +216,12 @@ class DataCollector:
             yesterday = today - timedelta(days=1)
             
             # Get recent posts and filter for today
-            posts = self.reddit_client.get_subreddit_posts(
-                subreddit_name=subreddit,
-                sort_type="new",
-                limit=100
-            )
+            async with self.reddit_client as reddit:
+                posts = await reddit.get_subreddit_posts(
+                    subreddit_name=subreddit,
+                    sort_type="new",
+                    limit=100
+                )
             
             # Filter posts from today only
             today_posts = []
@@ -267,42 +279,52 @@ class DataCollector:
             
             if post_id:
                 # Get comments from specific post
-                comments = self.reddit_client.get_post_comments(
-                    submission_id=post_id,
-                    max_comments=200,
-                    max_depth=5
-                )
+                async with self.reddit_client as reddit:
+                    comments = await reddit.get_post_comments(
+                        submission_id=post_id,
+                        max_comments=200,
+                        max_depth=5
+                    )
                 all_comments.extend(comments)
                 
             elif subreddit:
                 # Get comments from recent posts in subreddit
-                posts = self.reddit_client.get_subreddit_posts(
-                    subreddit_name=subreddit,
-                    sort_type="hot",
-                    limit=20
-                )
-                
-                for post in posts:
-                    comments = self.reddit_client.get_post_comments(
-                        submission_id=post['reddit_id'],
-                        max_comments=50,
-                        max_depth=3
+                async with self.reddit_client as reddit:
+                    posts = await reddit.get_subreddit_posts(
+                        subreddit_name=subreddit,
+                        sort_type="hot",
+                        limit=20
                     )
-                    # Add post context to comments
-                    for comment in comments:
-                        comment['post_title'] = post['title']
-                        comment['post_subreddit'] = post['subreddit']
-                    all_comments.extend(comments)
+                    
+                    for post in posts:
+                        comments = await reddit.get_post_comments(
+                            submission_id=post['reddit_id'],
+                            max_comments=50,
+                            max_depth=3
+                        )
+                        # Add post context to comments
+                        for comment in comments:
+                            comment['post_title'] = post['title']
+                            comment['post_subreddit'] = post['subreddit']
+                        all_comments.extend(comments)
             
             # Apply filters
             filtered_comments = all_comments
             
             # Date filter
             if date_from and date_to:
-                filtered_comments = [
-                    c for c in filtered_comments 
-                    if date_from <= c['created_utc'] <= date_to
-                ]
+                # Ensure timezone-aware comparison for comments
+                comments_to_filter = []
+                for c in filtered_comments:
+                    comment_date = c['created_utc']
+                    if comment_date.tzinfo is None:
+                        comment_date = comment_date.replace(tzinfo=timezone.utc)
+                    df = date_from.replace(tzinfo=timezone.utc) if date_from.tzinfo is None else date_from
+                    dt = date_to.replace(tzinfo=timezone.utc) if date_to.tzinfo is None else date_to
+                    
+                    if df <= comment_date <= dt:
+                        comments_to_filter.append(c)
+                filtered_comments = comments_to_filter
             
             # Keyword filter
             if keywords:
@@ -352,50 +374,51 @@ class DataCollector:
             
             # If specific subreddits provided, analyze those
             if subreddits:
-                for subreddit in subreddits:
-                    posts = self.reddit_client.get_subreddit_posts(
-                        subreddit_name=subreddit,
-                        sort_type="new",
-                        limit=100
-                    )
-                    
-                    for post in posts:
-                        if post['created_utc'] >= cutoff_date and post['author']:
-                            username = post['author']
-                            if username not in user_stats:
-                                user_stats[username] = {
-                                    'username': username,
-                                    'post_count': 0,
-                                    'comment_count': 0,
-                                    'total_score': 0,
-                                    'subreddits': set()
-                                }
-                            
-                            user_stats[username]['post_count'] += 1
-                            user_stats[username]['total_score'] += post['score']
-                            user_stats[username]['subreddits'].add(post['subreddit'])
-                            
-                            # Get some comments from this post
-                            comments = self.reddit_client.get_post_comments(
-                                submission_id=post['reddit_id'],
-                                max_comments=20,
-                                max_depth=2
-                            )
-                            
-                            for comment in comments:
-                                if comment['author'] and comment['created_utc'] >= cutoff_date:
-                                    comment_author = comment['author']
-                                    if comment_author not in user_stats:
-                                        user_stats[comment_author] = {
-                                            'username': comment_author,
-                                            'post_count': 0,
-                                            'comment_count': 0,
-                                            'total_score': 0,
-                                            'subreddits': set()
-                                        }
-                                    
-                                    user_stats[comment_author]['comment_count'] += 1
-                                    user_stats[comment_author]['total_score'] += comment['score']
+                async with self.reddit_client as reddit:
+                    for subreddit in subreddits:
+                        posts = await reddit.get_subreddit_posts(
+                            subreddit_name=subreddit,
+                            sort_type="new",
+                            limit=100
+                        )
+                        
+                        for post in posts:
+                            if post['created_utc'] >= cutoff_date and post['author']:
+                                username = post['author']
+                                if username not in user_stats:
+                                    user_stats[username] = {
+                                        'username': username,
+                                        'post_count': 0,
+                                        'comment_count': 0,
+                                        'total_score': 0,
+                                        'subreddits': set()
+                                    }
+                                
+                                user_stats[username]['post_count'] += 1
+                                user_stats[username]['total_score'] += post['score']
+                                user_stats[username]['subreddits'].add(post['subreddit'])
+                                
+                                # Get some comments from this post
+                                comments = await reddit.get_post_comments(
+                                    submission_id=post['reddit_id'],
+                                    max_comments=20,
+                                    max_depth=2
+                                )
+                                
+                                for comment in comments:
+                                    if comment['author'] and comment['created_utc'] >= cutoff_date:
+                                        comment_author = comment['author']
+                                        if comment_author not in user_stats:
+                                            user_stats[comment_author] = {
+                                                'username': comment_author,
+                                                'post_count': 0,
+                                                'comment_count': 0,
+                                                'total_score': 0,
+                                                'subreddits': set()
+                                            }
+                                        
+                                        user_stats[comment_author]['comment_count'] += 1
+                                        user_stats[comment_author]['total_score'] += comment['score']
             
             # Convert to list and sort by metric
             user_list = []
