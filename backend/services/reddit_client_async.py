@@ -1,8 +1,8 @@
-import praw
+import asyncpraw
+import asyncio
 import os
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
-import time
 import logging
 from dotenv import load_dotenv
 
@@ -10,9 +10,9 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-class RedditClient:                             
+class AsyncRedditClient:                             
     """
-    Comprehensive Reddit API client using PRAW
+    Async Reddit API client using AsyncPRAW for better FastAPI integration
     """
     
     def __init__(self):
@@ -24,32 +24,41 @@ class RedditClient:
             raise ValueError("Reddit API credentials not found in environment variables")
         
         self._reddit = None
-        self._initialize_client()
     
-    def _initialize_client(self):
-        """Initialize the PRAW Reddit client"""
+    async def __aenter__(self):
+        """Async context manager entry"""
+        await self._initialize_client()
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit"""
+        if self._reddit:
+            await self._reddit.close()
+    
+    async def _initialize_client(self):
+        """Initialize the AsyncPRAW Reddit client"""
         try:
-            self._reddit = praw.Reddit(
+            self._reddit = asyncpraw.Reddit(
                 client_id=self.client_id,
                 client_secret=self.client_secret,
                 user_agent=self.user_agent
             )
             
             # Test the connection
-            logger.info(f"Reddit client initialized. Read-only: {self._reddit.read_only}")
+            logger.info(f"Async Reddit client initialized. Read-only: {self._reddit.read_only}")
             
         except Exception as e:
-            logger.error(f"Failed to initialize Reddit client: {e}")
+            logger.error(f"Failed to initialize async Reddit client: {e}")
             raise
     
     @property
-    def reddit(self) -> praw.Reddit:
-        """Get the PRAW Reddit instance"""
+    def reddit(self) -> asyncpraw.Reddit:
+        """Get the AsyncPRAW Reddit instance"""
         if self._reddit is None:
-            self._initialize_client()
+            raise RuntimeError("Reddit client not initialized. Use async context manager.")
         return self._reddit
     
-    def get_subreddit_posts(
+    async def get_subreddit_posts(
         self,
         subreddit_name: str,
         sort_type: str = "hot",
@@ -57,7 +66,7 @@ class RedditClient:
         limit: int = 100
     ) -> List[Dict[str, Any]]:
         """
-        Get posts from a subreddit
+        Get posts from a subreddit (async)
         
         Args:
             subreddit_name: Name of the subreddit
@@ -69,7 +78,7 @@ class RedditClient:
             List of post dictionaries
         """
         try:
-            subreddit = self.reddit.subreddit(subreddit_name)
+            subreddit = await self.reddit.subreddit(subreddit_name)
             posts = []
             
             # Get posts based on sort type
@@ -86,12 +95,12 @@ class RedditClient:
             else:
                 raise ValueError(f"Invalid sort type: {sort_type}")
             
-            for submission in submission_generator:
-                post_data = self._extract_post_data(submission)
+            async for submission in submission_generator:
+                post_data = await self._extract_post_data(submission)
                 posts.append(post_data)
                 
-                # Rate limiting
-                time.sleep(0.1)
+                # Rate limiting - small delay
+                await asyncio.sleep(0.1)
             
             logger.info(f"Retrieved {len(posts)} posts from r/{subreddit_name}")
             return posts
@@ -100,14 +109,14 @@ class RedditClient:
             logger.error(f"Error retrieving posts from r/{subreddit_name}: {e}")
             raise
     
-    def get_post_comments(
+    async def get_post_comments(
         self,
         submission_id: str,
         max_comments: int = 50,
         max_depth: int = 3
     ) -> List[Dict[str, Any]]:
         """
-        Get comments for a specific post
+        Get comments for a specific post (async)
         
         Args:
             submission_id: Reddit submission ID
@@ -118,29 +127,29 @@ class RedditClient:
             List of comment dictionaries
         """
         try:
-            submission = self.reddit.submission(id=submission_id)
-            submission.comments.replace_more(limit=0)  # Remove MoreComments objects
+            submission = await self.reddit.submission(id=submission_id)
+            await submission.comments.replace_more(limit=0)  # Remove MoreComments objects
             
             comments = []
             comment_count = 0
             
-            def process_comment(comment, depth=0):
+            async def process_comment(comment, depth=0):
                 nonlocal comment_count
                 if comment_count >= max_comments or depth > max_depth:
                     return
                 
                 if hasattr(comment, 'body'):  # Ensure it's a real comment
-                    comment_data = self._extract_comment_data(comment, depth)
+                    comment_data = await self._extract_comment_data(comment, depth)
                     comments.append(comment_data)
                     comment_count += 1
                     
                     # Process replies
                     for reply in comment.replies:
-                        process_comment(reply, depth + 1)
+                        await process_comment(reply, depth + 1)
             
             # Process all top-level comments
             for comment in submission.comments:
-                process_comment(comment)
+                await process_comment(comment)
             
             logger.info(f"Retrieved {len(comments)} comments for post {submission_id}")
             return comments
@@ -149,7 +158,7 @@ class RedditClient:
             logger.error(f"Error retrieving comments for post {submission_id}: {e}")
             raise
     
-    def search_posts(
+    async def search_posts(
         self,
         query: str,
         subreddit_name: Optional[str] = None,
@@ -158,7 +167,7 @@ class RedditClient:
         limit: int = 100
     ) -> List[Dict[str, Any]]:
         """
-        Search for posts across Reddit or within a subreddit
+        Search for posts across Reddit or within a subreddit (async)
         
         Args:
             query: Search query
@@ -172,7 +181,7 @@ class RedditClient:
         """
         try:
             if subreddit_name:
-                subreddit = self.reddit.subreddit(subreddit_name)
+                subreddit = await self.reddit.subreddit(subreddit_name)
                 search_results = subreddit.search(
                     query=query,
                     sort=sort,
@@ -180,7 +189,8 @@ class RedditClient:
                     limit=limit
                 )
             else:
-                search_results = self.reddit.subreddit("all").search(
+                subreddit = await self.reddit.subreddit("all")
+                search_results = subreddit.search(
                     query=query,
                     sort=sort,
                     time_filter=time_filter,
@@ -188,10 +198,10 @@ class RedditClient:
                 )
             
             posts = []
-            for submission in search_results:
-                post_data = self._extract_post_data(submission)
+            async for submission in search_results:
+                post_data = await self._extract_post_data(submission)
                 posts.append(post_data)
-                time.sleep(0.1)  # Rate limiting
+                await asyncio.sleep(0.1)  # Rate limiting
             
             logger.info(f"Found {len(posts)} posts matching query: {query}")
             return posts
@@ -200,7 +210,7 @@ class RedditClient:
             logger.error(f"Error searching posts: {e}")
             raise
     
-    def get_user_posts(
+    async def get_user_posts(
         self,
         username: str,
         sort: str = "new",
@@ -208,7 +218,7 @@ class RedditClient:
         limit: int = 100
     ) -> List[Dict[str, Any]]:
         """
-        Get posts by a specific user
+        Get posts by a specific user (async)
         
         Args:
             username: Reddit username
@@ -220,7 +230,7 @@ class RedditClient:
             List of user's post dictionaries
         """
         try:
-            redditor = self.reddit.redditor(username)
+            redditor = await self.reddit.redditor(username)
             
             if sort == "new":
                 submissions = redditor.submissions.new(limit=limit)
@@ -232,10 +242,10 @@ class RedditClient:
                 raise ValueError(f"Invalid sort type: {sort}")
             
             posts = []
-            for submission in submissions:
-                post_data = self._extract_post_data(submission)
+            async for submission in submissions:
+                post_data = await self._extract_post_data(submission)
                 posts.append(post_data)
-                time.sleep(0.1)
+                await asyncio.sleep(0.1)
             
             logger.info(f"Retrieved {len(posts)} posts from user u/{username}")
             return posts
@@ -244,9 +254,9 @@ class RedditClient:
             logger.error(f"Error retrieving posts from user u/{username}: {e}")
             raise
     
-    def get_user_info(self, username: str) -> Dict[str, Any]:
+    async def get_user_info(self, username: str) -> Dict[str, Any]:
         """
-        Get information about a Reddit user
+        Get information about a Reddit user (async)
         
         Args:
             username: Reddit username
@@ -255,7 +265,7 @@ class RedditClient:
             User information dictionary
         """
         try:
-            redditor = self.reddit.redditor(username)
+            redditor = await self.reddit.redditor(username)
             
             user_data = {
                 "username": redditor.name,
@@ -278,9 +288,9 @@ class RedditClient:
             logger.error(f"Error retrieving user info for u/{username}: {e}")
             raise
     
-    def get_subreddit_info(self, subreddit_name: str) -> Dict[str, Any]:
+    async def get_subreddit_info(self, subreddit_name: str) -> Dict[str, Any]:
         """
-        Get information about a subreddit
+        Get information about a subreddit (async)
         
         Args:
             subreddit_name: Name of the subreddit
@@ -289,7 +299,7 @@ class RedditClient:
             Subreddit information dictionary
         """
         try:
-            subreddit = self.reddit.subreddit(subreddit_name)
+            subreddit = await self.reddit.subreddit(subreddit_name)
             
             subreddit_data = {
                 "name": subreddit.display_name,
@@ -310,8 +320,8 @@ class RedditClient:
             logger.error(f"Error retrieving subreddit info for r/{subreddit_name}: {e}")
             raise
     
-    def _extract_post_data(self, submission) -> Dict[str, Any]:
-        """Extract relevant data from a PRAW submission object"""
+    async def _extract_post_data(self, submission) -> Dict[str, Any]:
+        """Extract relevant data from an AsyncPRAW submission object"""
         return {
             "reddit_id": submission.id,
             "title": submission.title,
@@ -333,8 +343,8 @@ class RedditClient:
             "collected_at": datetime.utcnow()
         }
     
-    def _extract_comment_data(self, comment, depth: int = 0) -> Dict[str, Any]:
-        """Extract relevant data from a PRAW comment object"""
+    async def _extract_comment_data(self, comment, depth: int = 0) -> Dict[str, Any]:
+        """Extract relevant data from an AsyncPRAW comment object"""
         return {
             "reddit_id": comment.id,
             "body": comment.body,

@@ -21,6 +21,10 @@ python test_api.py
 
 # Test individual scenarios
 python -c "import asyncio; from test_api import test_reddit_connection; asyncio.run(test_reddit_connection())"
+
+# Test sentiment analysis
+curl "http://localhost:8000/api/sentiment/status" | python -m json.tool
+curl "http://localhost:8000/api/sentiment/test" | python -m json.tool
 ```
 
 ### Frontend (React/Node.js)
@@ -40,7 +44,7 @@ npm run build
 - Copy `.env.example` to `.env` and configure:
   - `DATABASE_URL`: PostgreSQL connection string
   - `REDDIT_CLIENT_ID` and `REDDIT_CLIENT_SECRET`: Reddit API credentials
-  - Optional: `OPENAI_API_KEY` for sentiment analysis
+  - Optional: `OPENROUTER_API_KEY` for AI-powered sentiment analysis
 
 ## Architecture Overview
 

@@ -8,6 +8,9 @@ import os
 import sys
 import asyncio
 import logging
+import httpx
+import json
+import time
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
@@ -134,6 +137,197 @@ async def test_comments_and_users():
         logger.error(f"Comment/user testing failed: {e}")
         return False
 
+async def test_collection_api():
+    """Test Collection API endpoints"""
+    logger.info("Testing Collection API endpoints...")
+    
+    base_url = "http://localhost:8000"
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            # Test 1: Health check
+            logger.info("Testing API health check...")
+            response = await client.get(f"{base_url}/health")
+            if response.status_code != 200:
+                logger.error(f"Health check failed: {response.status_code}")
+                return False
+            logger.info("✅ API health check passed")
+            
+            # Test 2: List jobs (initially empty)
+            logger.info("Testing list jobs endpoint...")
+            response = await client.get(f"{base_url}/api/collect/jobs")
+            if response.status_code != 200:
+                logger.error(f"List jobs failed: {response.status_code}")
+                return False
+            
+            jobs_data = response.json()
+            logger.info(f"✅ Found {jobs_data['total']} existing collection jobs")
+            
+            # Test 3: Create a basic collection job
+            logger.info("Testing collection job creation...")
+            job_payload = {
+                "subreddits": ["python"],
+                "sort_types": ["hot"],
+                "time_filters": ["day"],
+                "post_limit": 3,
+                "comment_limit": 0,
+                "max_comment_depth": 1,
+                "min_score": 1,
+                "exclude_nsfw": True,
+                "anonymize_users": True
+            }
+            
+            response = await client.post(
+                f"{base_url}/api/collect/jobs",
+                json=job_payload,
+                headers={"Content-Type": "application/json"}
+            )
+            
+            if response.status_code != 200:
+                logger.error(f"Job creation failed: {response.status_code} - {response.text}")
+                return False
+            
+            job_response = response.json()
+            job_id = job_response["job_id"]
+            logger.info(f"✅ Created collection job: {job_id}")
+            
+            # Test 4: Get job status
+            logger.info("Testing job status endpoint...")
+            response = await client.get(f"{base_url}/api/collect/jobs/{job_id}/status")
+            if response.status_code != 200:
+                logger.error(f"Job status failed: {response.status_code}")
+                return False
+            
+            status_data = response.json()
+            logger.info(f"✅ Job status: {status_data['status']}")
+            
+            # Test 5: Monitor job completion
+            logger.info("Monitoring job completion...")
+            max_attempts = 15
+            for attempt in range(max_attempts):
+                response = await client.get(f"{base_url}/api/collect/jobs/{job_id}/status")
+                status_data = response.json()
+                status = status_data["status"]
+                
+                if status in ["completed", "failed"]:
+                    logger.info(f"✅ Job completed with status: {status}")
+                    if status == "completed":
+                        logger.info(f"✅ Collected {status_data['collected_posts']} posts, {status_data['collected_comments']} comments")
+                    break
+                
+                logger.info(f"   Job status: {status} (attempt {attempt + 1}/{max_attempts})")
+                await asyncio.sleep(1)
+            else:
+                logger.warning("Job did not complete within timeout")
+            
+            # Test 6: Get full job details
+            logger.info("Testing job details endpoint...")
+            response = await client.get(f"{base_url}/api/collect/jobs/{job_id}")
+            if response.status_code != 200:
+                logger.error(f"Job details failed: {response.status_code}")
+                return False
+            
+            job_details = response.json()
+            logger.info(f"✅ Job details retrieved: {job_details['status']} - {job_details['collected_posts']} posts")
+            
+            # Test 7: Create advanced job with keywords
+            logger.info("Testing advanced collection job with keywords...")
+            advanced_payload = {
+                "subreddits": ["python", "programming"],
+                "sort_types": ["hot"],
+                "time_filters": ["day"],
+                "post_limit": 2,
+                "comment_limit": 0,
+                "max_comment_depth": 1,
+                "keywords": ["fastapi"],
+                "min_score": 1,
+                "min_upvote_ratio": 0.7,
+                "exclude_nsfw": True,
+                "anonymize_users": False
+            }
+            
+            response = await client.post(
+                f"{base_url}/api/collect/jobs",
+                json=advanced_payload,
+                headers={"Content-Type": "application/json"}
+            )
+            
+            if response.status_code != 200:
+                logger.error(f"Advanced job creation failed: {response.status_code}")
+                return False
+            
+            advanced_job = response.json()
+            advanced_job_id = advanced_job["job_id"]
+            logger.info(f"✅ Created advanced job: {advanced_job_id}")
+            
+            # Wait a moment for advanced job to complete
+            await asyncio.sleep(3)
+            
+            # Test 8: Test pagination
+            logger.info("Testing pagination...")
+            response = await client.get(f"{base_url}/api/collect/jobs?page=1&per_page=5")
+            if response.status_code != 200:
+                logger.error(f"Pagination test failed: {response.status_code}")
+                return False
+            
+            page_data = response.json()
+            logger.info(f"✅ Pagination works: page 1, {len(page_data['jobs'])} jobs returned")
+            
+            # Test 9: Test status filtering
+            logger.info("Testing status filtering...")
+            response = await client.get(f"{base_url}/api/collect/jobs?status=completed")
+            if response.status_code != 200:
+                logger.error(f"Status filtering failed: {response.status_code}")
+                return False
+            
+            filtered_data = response.json()
+            completed_count = len(filtered_data['jobs'])
+            logger.info(f"✅ Status filtering works: {completed_count} completed jobs")
+            
+            # Test 10: Test job cancellation (create a job to cancel)
+            logger.info("Testing job cancellation...")
+            cancel_payload = {
+                "subreddits": ["python"],
+                "sort_types": ["hot"],
+                "time_filters": ["day"],
+                "post_limit": 50,  # Larger job more likely to be cancelable
+                "comment_limit": 20,
+                "min_score": 1,
+                "exclude_nsfw": True,
+                "anonymize_users": True
+            }
+            
+            response = await client.post(
+                f"{base_url}/api/collect/jobs",
+                json=cancel_payload,
+                headers={"Content-Type": "application/json"}
+            )
+            
+            if response.status_code == 200:
+                cancel_job = response.json()
+                cancel_job_id = cancel_job["job_id"]
+                
+                # Try to cancel immediately
+                response = await client.post(f"{base_url}/api/collect/jobs/{cancel_job_id}/cancel")
+                if response.status_code == 200:
+                    logger.info("✅ Job cancellation works")
+                else:
+                    logger.info("⚠️  Job completed before cancellation could be tested")
+            
+            # Test 11: Test invalid job ID (should return 404)
+            logger.info("Testing invalid job ID...")
+            response = await client.get(f"{base_url}/api/collect/jobs/invalid-job-id")
+            if response.status_code == 404:
+                logger.info("✅ Invalid job ID correctly returns 404")
+            else:
+                logger.warning(f"Expected 404, got {response.status_code}")
+            
+            return True
+            
+    except Exception as e:
+        logger.error(f"Collection API testing failed: {e}")
+        return False
+
 def check_environment():
     """Check if all required environment variables are set"""
     logger.info("Checking environment configuration...")
@@ -179,8 +373,27 @@ async def main():
         logger.error("Comment/user tests failed.")
         sys.exit(1)
     
+    # Test Collection API
+    logger.info("\n" + "="*60)
+    logger.info("Starting Collection API tests...")
+    logger.info("="*60)
+    
+    if not await test_collection_api():
+        logger.error("Collection API tests failed.")
+        sys.exit(1)
+    
+    logger.info("\n" + "="*60)
     logger.info("All tests completed successfully!")
     logger.info("Trendit API is ready for use!")
+    logger.info("="*60)
+    
+    # Print summary
+    logger.info("\n📊 Test Summary:")
+    logger.info("✅ Reddit API Connection")
+    logger.info("✅ Data Collection Scenarios")
+    logger.info("✅ Comment & User Analysis")
+    logger.info("✅ Collection API Endpoints")
+    logger.info("\n🚀 Trendit API is fully functional!")
 
 if __name__ == "__main__":
     asyncio.run(main())

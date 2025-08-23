@@ -143,22 +143,24 @@ async def query_posts(request: PostQueryRequest):
             # Build search query if keywords provided
             if request.keywords:
                 search_query = " OR ".join(request.keywords)
-                posts = collector.reddit_client.search_posts(
-                    query=search_query,
-                    subreddit_name=subreddit,
-                    sort=request.sort_type,
-                    time_filter=request.time_filter,
-                    limit=min(request.limit * 2, 1000)  # Get extra for filtering
-                )
+                async with collector.reddit_client as reddit:
+                    posts = await reddit.search_posts(
+                        query=search_query,
+                        subreddit_name=subreddit,
+                        sort=request.sort_type,
+                        time_filter=request.time_filter,
+                        limit=min(request.limit * 2, 1000)  # Get extra for filtering
+                    )
                 filters_applied.append("keyword_search")
             else:
                 # Get posts by sort type
-                posts = collector.reddit_client.get_subreddit_posts(
-                    subreddit_name=subreddit,
-                    sort_type=request.sort_type,
-                    time_filter=request.time_filter,
-                    limit=min(request.limit * 2, 1000)
-                )
+                async with collector.reddit_client as reddit:
+                    posts = await reddit.get_subreddit_posts(
+                        subreddit_name=subreddit,
+                        sort_type=request.sort_type,
+                        time_filter=request.time_filter,
+                        limit=min(request.limit * 2, 1000)
+                    )
             
             all_results.extend(posts)
         
@@ -270,33 +272,34 @@ async def query_comments(request: CommentQueryRequest):
         
         if request.post_ids:
             # Get comments from specific posts
-            for post_id in request.post_ids:
-                reddit_calls += 1
-                comments = collector.reddit_client.get_post_comments(
-                    post_id=post_id,
-                    limit=request.limit,
-                    sort=request.sort_type
-                )
-                all_results.extend(comments)
+            async with collector.reddit_client as reddit:
+                for post_id in request.post_ids:
+                    reddit_calls += 1
+                    comments = await reddit.get_post_comments(
+                        submission_id=post_id,
+                        max_comments=request.limit
+                    )
+                    all_results.extend(comments)
                 
         elif request.subreddits:
             # Search comments in subreddits (via recent posts)
-            for subreddit in request.subreddits:
-                reddit_calls += 1
-                # Get recent posts to find comments
-                posts = collector.reddit_client.get_subreddit_posts(
-                    subreddit_name=subreddit,
-                    sort_type="new",
-                    limit=20  # Get recent posts to search their comments
-                )
-                
-                for post in posts:
+            async with collector.reddit_client as reddit:
+                for subreddit in request.subreddits:
                     reddit_calls += 1
-                    comments = collector.reddit_client.get_post_comments(
-                        post_id=post['reddit_id'],
-                        limit=50
+                    # Get recent posts to find comments
+                    posts = await reddit.get_subreddit_posts(
+                        subreddit_name=subreddit,
+                        sort_type="new",
+                        limit=20  # Get recent posts to search their comments
                     )
-                    all_results.extend(comments)
+                    
+                    for post in posts:
+                        reddit_calls += 1
+                        comments = await reddit.get_post_comments(
+                            submission_id=post['reddit_id'],
+                            max_comments=50
+                        )
+                        all_results.extend(comments)
         
         # Apply filters
         filtered_results = []
@@ -374,37 +377,39 @@ async def query_users(request: UserQueryRequest):
         
         if request.usernames:
             # Get specific user profiles
-            for username in request.usernames:
-                reddit_calls += 1
-                try:
-                    user_data = collector.reddit_client.get_user_info(username)
-                    if user_data:
-                        all_results.append(user_data)
-                except:
-                    continue  # Skip invalid/suspended users
+            async with collector.reddit_client as reddit:
+                for username in request.usernames:
+                    reddit_calls += 1
+                    try:
+                        user_data = await reddit.get_user_info(username)
+                        if user_data:
+                            all_results.append(user_data)
+                    except:
+                        continue  # Skip invalid/suspended users
                     
         elif request.subreddits:
             # Find active users in subreddits
             seen_users = set()
-            for subreddit in request.subreddits:
-                reddit_calls += 1
-                posts = collector.reddit_client.get_subreddit_posts(
-                    subreddit_name=subreddit,
-                    sort_type="hot",
-                    limit=100
-                )
-                
-                for post in posts:
-                    author = post.get('author')
-                    if author and author not in seen_users:
-                        seen_users.add(author)
-                        reddit_calls += 1
-                        try:
-                            user_data = collector.reddit_client.get_user_info(author)
-                            if user_data:
-                                all_results.append(user_data)
-                        except:
-                            continue
+            async with collector.reddit_client as reddit:
+                for subreddit in request.subreddits:
+                    reddit_calls += 1
+                    posts = await reddit.get_subreddit_posts(
+                        subreddit_name=subreddit,
+                        sort_type="hot",
+                        limit=100
+                    )
+                    
+                    for post in posts:
+                        author = post.get('author')
+                        if author and author not in seen_users:
+                            seen_users.add(author)
+                            reddit_calls += 1
+                            try:
+                                user_data = await reddit.get_user_info(author)
+                                if user_data:
+                                    all_results.append(user_data)
+                            except:
+                                continue
         
         # Apply filters
         filtered_results = []
