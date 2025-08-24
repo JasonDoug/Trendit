@@ -25,6 +25,10 @@ python -c "import asyncio; from test_api import test_reddit_connection; asyncio.
 # Test sentiment analysis
 curl "http://localhost:8000/api/sentiment/status" | python -m json.tool
 curl "http://localhost:8000/api/sentiment/test" | python -m json.tool
+
+# Test date filtering improvements
+python backend/test_date_filter.py
+python backend/verify_integration.py
 ```
 
 ### Frontend (React/Node.js)
@@ -52,10 +56,11 @@ npm run build
 Trendit is a Reddit data collection and analysis platform with a FastAPI backend and planned React frontend. The system follows a service-oriented architecture:
 
 **Backend Services:**
-- `RedditClient` (`services/reddit_client.py`): PRAW-based Reddit API interaction
-- `DataCollector` (`services/data_collector.py`): High-level data collection scenarios
+- `AsyncRedditClient` (`services/reddit_client_async.py`): AsyncPRAW-based Reddit API interaction
+- `DataCollector` (`services/data_collector.py`): High-level data collection scenarios with improved date filtering
 - `AnalyticsService` (`services/analytics.py`): Data analysis and insights
-- API endpoints (`api/scenarios.py`): REST API for frontend communication
+- `ImprovedDateFiltering` (`services/date_filter_fix.py`): Enhanced date filtering with timezone handling and buffers
+- API endpoints (`api/collect.py`, `api/data.py`, `api/export.py`): REST APIs for collection, querying, and export
 
 **Database Models:**
 - `CollectionJob`: Tracks data collection tasks with parameters and status
@@ -89,11 +94,12 @@ The system implements specific user scenarios:
 - JSON columns for flexible parameter storage
 
 ### Reddit API Integration
-- PRAW (Python Reddit API Wrapper) for authentication
+- AsyncPRAW (Async Python Reddit API Wrapper) for authentication
 - Rate limiting and respectful API usage built-in
 - Supports all Reddit sort types (hot, new, top, rising, controversial)
-- Time filters (hour, day, week, month, year, all)
+- Time filters (hour, day, week, month, year, all) with optimal selection logic
 - Anonymous data collection with optional PII removal
+- Improved date filtering with timezone handling and buffers to reduce post filtering issues
 
 ### Async Architecture
 - FastAPI with async/await patterns throughout
@@ -110,9 +116,14 @@ The system implements specific user scenarios:
 - `main.py`: FastAPI application setup, CORS, health checks
 - `models/models.py`: Complete database schema with relationships
 - `services/data_collector.py`: Core collection logic implementing user scenarios
-- `services/reddit_client.py`: Reddit API abstraction layer
-- `api/scenarios.py`: REST endpoints mapping to collection scenarios
+- `services/reddit_client_async.py`: Async Reddit API abstraction layer
+- `services/date_filter_fix.py`: Improved date filtering logic with timezone handling
+- `api/collect.py`: Collection API endpoints for data gathering
+- `api/data.py`: Data query API endpoints
+- `api/export.py`: Export API endpoints for multiple formats
 - `test_api.py`: Comprehensive test suite for all functionality
+- `test_date_filter.py`: Date filtering test suite
+- `verify_integration.py`: Integration verification script
 
 ## Testing Strategy
 
