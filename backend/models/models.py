@@ -26,17 +26,41 @@ class TimeFilter(enum.Enum):
     YEAR = "year"
     ALL = "all"
 
+class SubscriptionStatus(enum.Enum):
+    INACTIVE = "inactive"
+    ACTIVE = "active"
+    SUSPENDED = "suspended"
+    CANCELLED = "cancelled"
+
 class User(Base):
     __tablename__ = "users"
     
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True)
     email = Column(String, unique=True, index=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    password_hash = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
+    subscription_status = Column(Enum(SubscriptionStatus), default=SubscriptionStatus.INACTIVE)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     # Relationships
     collection_jobs = relationship("CollectionJob", back_populates="user")
+    api_keys = relationship("APIKey", back_populates="user")
+
+class APIKey(Base):
+    __tablename__ = "api_keys"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    key_hash = Column(String, nullable=False, index=True)  # Store hashed version
+    name = Column(String, nullable=False)  # User-friendly name for the key
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Relationships
+    user = relationship("User", back_populates="api_keys")
 
 class CollectionJob(Base):
     __tablename__ = "collection_jobs"
@@ -219,6 +243,13 @@ class Analytics(Base):
 # Database indexes for better performance
 Index('idx_reddit_posts_subreddit_score', RedditPost.subreddit, RedditPost.score)
 Index('idx_reddit_posts_created_utc', RedditPost.created_utc)
+Index('idx_reddit_posts_collection_job', RedditPost.collection_job_id)
+Index('idx_reddit_comments_post_id', RedditComment.post_id)
 Index('idx_reddit_comments_score', RedditComment.score)
 Index('idx_reddit_comments_created_utc', RedditComment.created_utc)
 Index('idx_collection_jobs_status_created', CollectionJob.status, CollectionJob.created_at)
+Index('idx_collection_jobs_user_id', CollectionJob.user_id)
+Index('idx_api_keys_user_id', APIKey.user_id)
+Index('idx_api_keys_hash', APIKey.key_hash)
+Index('idx_users_email', User.email)
+Index('idx_users_subscription_status', User.subscription_status)

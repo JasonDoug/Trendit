@@ -1,9 +1,11 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import logging
 
 from services.sentiment_analyzer import sentiment_analyzer
+from models.models import User
+from api.auth import require_active_subscription
 
 router = APIRouter(prefix="/api/sentiment", tags=["sentiment"])
 logger = logging.getLogger(__name__)
@@ -26,7 +28,9 @@ class BatchSentimentAnalysisResponse(BaseModel):
     total_time_ms: float
 
 @router.get("/status")
-async def get_sentiment_analysis_status():
+async def get_sentiment_analysis_status(
+    current_user: User = Depends(require_active_subscription)
+):
     """
     Get sentiment analysis service status
     """
@@ -38,7 +42,10 @@ async def get_sentiment_analysis_status():
     }
 
 @router.post("/analyze", response_model=SentimentAnalysisResponse)
-async def analyze_text_sentiment(request: SentimentAnalysisRequest):
+async def analyze_text_sentiment(
+    request: SentimentAnalysisRequest,
+    current_user: User = Depends(require_active_subscription)
+):
     """
     Analyze sentiment of a single text
     """
@@ -64,7 +71,10 @@ async def analyze_text_sentiment(request: SentimentAnalysisRequest):
     )
 
 @router.post("/analyze-batch", response_model=BatchSentimentAnalysisResponse)
-async def analyze_batch_sentiment(request: BatchSentimentAnalysisRequest):
+async def analyze_batch_sentiment(
+    request: BatchSentimentAnalysisRequest,
+    current_user: User = Depends(require_active_subscription)
+):
     """
     Analyze sentiment of multiple texts in batch
     """
@@ -108,7 +118,9 @@ async def analyze_batch_sentiment(request: BatchSentimentAnalysisRequest):
     )
 
 @router.get("/test")
-async def test_sentiment_analysis():
+async def test_sentiment_analysis(
+    current_user: User = Depends(require_active_subscription)
+):
     """
     Test sentiment analysis with sample texts
     """

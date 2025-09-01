@@ -24,6 +24,11 @@ aiohttp==3.11.10
 python-dotenv==1.0.1
 pydantic==2.10.5
 
+# Authentication
+passlib[bcrypt]==1.7.4
+PyJWT==2.9.0
+python-multipart==0.0.9
+
 # Analytics & ML
 scikit-learn==1.5.2
 textblob==0.18.0

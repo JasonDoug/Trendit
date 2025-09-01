@@ -7,9 +7,10 @@ import uuid
 import logging
 
 from models.database import get_db
-from models.models import CollectionJob, JobStatus, SortType, TimeFilter, RedditPost, RedditComment
+from models.models import CollectionJob, JobStatus, SortType, TimeFilter, RedditPost, RedditComment, User
 from services.data_collector import DataCollector
 from services.sentiment_analyzer import sentiment_analyzer
+from api.auth import require_active_subscription
 
 router = APIRouter(prefix="/api/collect", tags=["collection"])
 logger = logging.getLogger(__name__)
@@ -83,7 +84,8 @@ class CollectionJobListResponse(BaseModel):
 async def create_collection_job(
     job_request: CollectionJobRequest,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_active_subscription)
 ):
     """
     Create a new persistent collection job
@@ -98,7 +100,7 @@ async def create_collection_job(
         # Create collection job record
         collection_job = CollectionJob(
             job_id=job_id,
-            user_id=None,  # TODO: Add authentication
+            user_id=current_user.id,
             subreddits=job_request.subreddits,
             sort_types=[st.value for st in job_request.sort_types],
             time_filters=[tf.value for tf in job_request.time_filters],
@@ -137,7 +139,8 @@ async def create_collection_job(
 @router.get("/jobs/{job_id}", response_model=CollectionJobResponse)
 async def get_collection_job(
     job_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_active_subscription)
 ):
     """
     Get detailed information about a specific collection job
@@ -152,7 +155,8 @@ async def get_collection_job(
 @router.get("/jobs/{job_id}/status", response_model=CollectionJobStatusResponse)
 async def get_collection_job_status(
     job_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_active_subscription)
 ):
     """
     Get quick status update for a collection job
@@ -176,7 +180,8 @@ async def list_collection_jobs(
     status: Optional[JobStatus] = None,
     page: int = 1,
     per_page: int = 20,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_active_subscription)
 ):
     """
     List collection jobs with optional filtering
@@ -203,7 +208,8 @@ async def list_collection_jobs(
 @router.post("/jobs/{job_id}/cancel")
 async def cancel_collection_job(
     job_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_active_subscription)
 ):
     """
     Cancel a running collection job
@@ -230,7 +236,8 @@ async def cancel_collection_job(
 @router.delete("/jobs/{job_id}")
 async def delete_collection_job(
     job_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_active_subscription)
 ):
     """
     Delete a collection job and all associated data

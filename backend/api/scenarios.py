@@ -5,7 +5,9 @@ from datetime import datetime, date, timedelta
 from pydantic import BaseModel
 
 from models.database import get_db
+from models.models import User
 from services.data_collector import DataCollector
+from api.auth import require_active_subscription
 
 router = APIRouter(prefix="/api/scenarios", tags=["scenarios"])
 collector = DataCollector()
@@ -27,7 +29,8 @@ async def scenario_1_subreddit_keyword_search(
     date_to: date = Query(..., description="End date (YYYY-MM-DD)"),
     limit: int = Query(10, description="Number of results to return"),
     sort_by: str = Query("score", description="Sort by: score, comments, date"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_active_subscription)
 ):
     """
     SCENARIO 1: Get the 10 most popular posts in r/python about 'poetry' from date X to Y
@@ -70,7 +73,8 @@ async def scenario_2_trending_multi_subreddits(
     subreddits: str = Query(..., description="Comma-separated subreddit names (e.g., 'claudecode,vibecoding,aiagent')"),
     timeframe: str = Query("day", description="Timeframe: hour, day, week"),
     limit: int = Query(10, description="Number of trending posts to return"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_active_subscription)
 ):
     """
     SCENARIO 2: Trending posts in r/claudecode, r/vibecoding, and r/aiagent for today
@@ -109,7 +113,8 @@ async def scenario_3_top_posts_all(
     sort_type: str = Query("hot", description="Sort type: hot, top, new, rising, controversial"),
     time_filter: str = Query("week", description="Time filter: hour, day, week, month, year, all"),
     limit: int = Query(10, description="Number of posts to return"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_active_subscription)
 ):
     """
     SCENARIO 3: Top 10 hot posts in r/all for this week
@@ -144,7 +149,8 @@ async def scenario_3_top_posts_all(
 async def scenario_4_most_popular_today(
     subreddit: str = Query(..., description="Subreddit name (e.g., 'openai')"),
     metric: str = Query("score", description="Popularity metric: score, comments, upvote_ratio"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_active_subscription)
 ):
     """
     SCENARIO 4: Most popular post in r/openai today
@@ -184,7 +190,8 @@ async def get_top_comments_by_criteria(
     days_back: int = Query(7, description="Days to look back"),
     limit: int = Query(10, description="Number of comments to return"),
     sort_by: str = Query("score", description="Sort by: score, date, length"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_active_subscription)
 ):
     """
     Get top comments based on various criteria
@@ -243,7 +250,8 @@ async def get_top_users_by_activity(
     days_back: int = Query(7, description="Days to analyze"),
     limit: int = Query(10, description="Number of users to return"),
     metric: str = Query("total_score", description="Ranking metric: total_score, post_count, comment_count"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_active_subscription)
 ):
     """
     Get most active/popular users based on various metrics
@@ -282,7 +290,9 @@ async def get_top_users_by_activity(
 
 # COMBINED SCENARIOS ENDPOINT
 @router.get("/examples", response_model=dict)
-async def get_scenario_examples():
+async def get_scenario_examples(
+    current_user: User = Depends(require_active_subscription)
+):
     """
     Get example API calls for all scenarios
     """

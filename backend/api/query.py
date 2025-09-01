@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query as FastAPIQuery
+from fastapi import APIRouter, HTTPException, Query as FastAPIQuery, Depends
 from typing import List, Optional, Dict, Any
 from datetime import datetime, date
 from pydantic import BaseModel, Field
@@ -6,6 +6,8 @@ import time
 import logging
 
 from services.data_collector import DataCollector
+from models.models import User
+from api.auth import require_active_subscription
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/query", tags=["query"])
@@ -118,7 +120,10 @@ class QueryResponse(BaseModel):
 
 # POST Endpoints for complex queries
 @router.post("/posts", response_model=QueryResponse)
-async def query_posts(request: PostQueryRequest):
+async def query_posts(
+    request: PostQueryRequest,
+    current_user: User = Depends(require_active_subscription)
+):
     """
     Advanced post query with comprehensive filtering options.
     
@@ -254,7 +259,10 @@ async def query_posts(request: PostQueryRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/comments", response_model=QueryResponse)
-async def query_comments(request: CommentQueryRequest):
+async def query_comments(
+    request: CommentQueryRequest,
+    current_user: User = Depends(require_active_subscription)
+):
     """
     Advanced comment query with comprehensive filtering options.
     
@@ -359,7 +367,10 @@ async def query_comments(request: CommentQueryRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/users", response_model=QueryResponse)
-async def query_users(request: UserQueryRequest):
+async def query_users(
+    request: UserQueryRequest,
+    current_user: User = Depends(require_active_subscription)
+):
     """
     Advanced user analysis and filtering.
     
@@ -460,7 +471,8 @@ async def simple_post_query(
     subreddits: str = FastAPIQuery(..., description="Comma-separated subreddit names"),
     keywords: Optional[str] = FastAPIQuery(None, description="Comma-separated keywords"),
     min_score: Optional[int] = FastAPIQuery(None, description="Minimum score"),
-    limit: int = FastAPIQuery(50, description="Maximum results")
+    limit: int = FastAPIQuery(50, description="Maximum results"),
+    current_user: User = Depends(require_active_subscription)
 ):
     """Simple post query via GET parameters"""
     request = PostQueryRequest(
@@ -472,7 +484,9 @@ async def simple_post_query(
     return await query_posts(request)
 
 @router.get("/examples")
-async def query_examples():
+async def query_examples(
+    current_user: User = Depends(require_active_subscription)
+):
     """Get example queries for the Query API"""
     return {
         "description": "Trendit Query API - Flexible one-off Reddit queries",

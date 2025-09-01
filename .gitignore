@@ -263,3 +263,7 @@ docs/build/
 *.bak
 *.backup
 *~
+.aider*
+
+# Claude Code session files
+.claude/
