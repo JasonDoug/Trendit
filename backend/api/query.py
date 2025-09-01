@@ -7,7 +7,7 @@ import logging
 
 from services.data_collector import DataCollector
 from models.models import User
-from api.auth import require_active_subscription
+from api.auth import require_api_call_limit
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/query", tags=["query"])
@@ -122,7 +122,7 @@ class QueryResponse(BaseModel):
 @router.post("/posts", response_model=QueryResponse)
 async def query_posts(
     request: PostQueryRequest,
-    current_user: User = Depends(require_active_subscription)
+    current_user: User = Depends(require_api_call_limit)
 ):
     """
     Advanced post query with comprehensive filtering options.
@@ -261,7 +261,7 @@ async def query_posts(
 @router.post("/comments", response_model=QueryResponse)
 async def query_comments(
     request: CommentQueryRequest,
-    current_user: User = Depends(require_active_subscription)
+    current_user: User = Depends(require_api_call_limit)
 ):
     """
     Advanced comment query with comprehensive filtering options.
@@ -369,7 +369,7 @@ async def query_comments(
 @router.post("/users", response_model=QueryResponse)
 async def query_users(
     request: UserQueryRequest,
-    current_user: User = Depends(require_active_subscription)
+    current_user: User = Depends(require_api_call_limit)
 ):
     """
     Advanced user analysis and filtering.
@@ -472,7 +472,7 @@ async def simple_post_query(
     keywords: Optional[str] = FastAPIQuery(None, description="Comma-separated keywords"),
     min_score: Optional[int] = FastAPIQuery(None, description="Minimum score"),
     limit: int = FastAPIQuery(50, description="Maximum results"),
-    current_user: User = Depends(require_active_subscription)
+    current_user: User = Depends(require_api_call_limit)
 ):
     """Simple post query via GET parameters"""
     request = PostQueryRequest(
@@ -485,7 +485,7 @@ async def simple_post_query(
 
 @router.get("/examples")
 async def query_examples(
-    current_user: User = Depends(require_active_subscription)
+    current_user: User = Depends(require_api_call_limit)
 ):
     """Get example queries for the Query API"""
     return {

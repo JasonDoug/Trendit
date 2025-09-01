@@ -13,6 +13,8 @@ from api.data import router as data_router
 from api.export import router as export_router
 from api.sentiment import router as sentiment_router
 from api.auth import router as auth_router
+from api.billing import router as billing_router
+from api.webhooks import router as webhooks_router
 import os
 from dotenv import load_dotenv
 
@@ -62,6 +64,8 @@ app.add_middleware(
 
 # Include routers
 app.include_router(auth_router)
+app.include_router(billing_router)
+app.include_router(webhooks_router)
 app.include_router(scenarios_router)
 app.include_router(query_router)
 app.include_router(collect_router)

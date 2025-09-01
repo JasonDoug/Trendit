@@ -29,8 +29,14 @@ class TimeFilter(enum.Enum):
 class SubscriptionStatus(enum.Enum):
     INACTIVE = "inactive"
     ACTIVE = "active"
+    TRIALING = "trialing"
     SUSPENDED = "suspended"
     CANCELLED = "cancelled"
+
+class SubscriptionTier(enum.Enum):
+    FREE = "free"
+    PRO = "pro"
+    ENTERPRISE = "enterprise"
 
 class User(Base):
     __tablename__ = "users"
@@ -46,6 +52,7 @@ class User(Base):
     # Relationships
     collection_jobs = relationship("CollectionJob", back_populates="user")
     api_keys = relationship("APIKey", back_populates="user")
+    paddle_subscription = relationship("PaddleSubscription", back_populates="user", uselist=False)
 
 class APIKey(Base):
     __tablename__ = "api_keys"
@@ -253,3 +260,146 @@ Index('idx_api_keys_user_id', APIKey.user_id)
 Index('idx_api_keys_hash', APIKey.key_hash)
 Index('idx_users_email', User.email)
 Index('idx_users_subscription_status', User.subscription_status)
+
+# ============================================================================
+# PADDLE BILLING INTEGRATION MODELS
+# ============================================================================
+
+class PaddleSubscription(Base):
+    """Extended subscription model for Paddle Billing integration"""
+    __tablename__ = "paddle_subscriptions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True)
+    
+    # Paddle Integration Fields
+    paddle_customer_id = Column(String, nullable=True, unique=True, index=True)
+    paddle_subscription_id = Column(String, nullable=True, unique=True, index=True)
+    paddle_price_id = Column(String, nullable=True)
+    
+    # Subscription Details
+    tier = Column(Enum(SubscriptionTier), default=SubscriptionTier.FREE, index=True)
+    status = Column(Enum(SubscriptionStatus), default=SubscriptionStatus.INACTIVE, index=True)
+    
+    # Billing Cycle Information
+    current_period_start = Column(DateTime(timezone=True), nullable=True)
+    current_period_end = Column(DateTime(timezone=True), nullable=True)
+    next_billed_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Usage Limits (dynamically set based on tier)
+    monthly_api_calls_limit = Column(Integer, default=100)
+    monthly_exports_limit = Column(Integer, default=5)
+    monthly_sentiment_limit = Column(Integer, default=50)
+    data_retention_days = Column(Integer, default=30)
+    
+    # Billing Information
+    price_per_month = Column(Float, default=0.0)
+    currency = Column(String, default="USD", nullable=False)
+    
+    # Trial Management
+    trial_start_date = Column(DateTime(timezone=True), nullable=True)
+    trial_end_date = Column(DateTime(timezone=True), nullable=True)
+    is_trial = Column(Boolean, default=False)
+    
+    # Customer Portal & Management
+    customer_portal_url = Column(String, nullable=True)  # Paddle-generated URL
+    
+    # Metadata & Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # Relationships
+    user = relationship("User", back_populates="paddle_subscription")
+    usage_records = relationship("UsageRecord", back_populates="subscription")
+    billing_events = relationship("BillingEvent", back_populates="subscription")
+
+class UsageRecord(Base):
+    """Track API usage for billing and rate limiting purposes"""
+    __tablename__ = "usage_records"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    subscription_id = Column(Integer, ForeignKey("paddle_subscriptions.id"), nullable=True, index=True)
+    
+    # Usage Details
+    endpoint = Column(String, nullable=False, index=True)  # "/api/export/posts/csv"
+    usage_type = Column(String, nullable=False, index=True)  # "api_call", "export", "sentiment_analysis"
+    cost_units = Column(Integer, default=1)  # How many "units" this action consumed
+    
+    # Request Context
+    request_id = Column(String, nullable=True)  # For debugging/tracing
+    ip_address = Column(String, nullable=True)
+    user_agent = Column(Text, nullable=True)
+    
+    # Billing Period Tracking
+    billing_period_start = Column(DateTime(timezone=True), nullable=False, index=True)
+    billing_period_end = Column(DateTime(timezone=True), nullable=False)
+    
+    # Additional Context
+    request_metadata = Column(JSON, nullable=True)  # Additional context (file size, etc.)
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    
+    # Relationships
+    user = relationship("User")
+    subscription = relationship("PaddleSubscription", back_populates="usage_records")
+
+class BillingEvent(Base):
+    """Audit log for all billing events received from Paddle webhooks"""
+    __tablename__ = "billing_events"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    subscription_id = Column(Integer, ForeignKey("paddle_subscriptions.id"), nullable=True, index=True)
+    
+    # Paddle Event Identification
+    paddle_event_id = Column(String, nullable=False, unique=True, index=True)
+    event_type = Column(String, nullable=False, index=True)  # "subscription.created", "transaction.completed"
+    paddle_subscription_id = Column(String, nullable=True, index=True)
+    paddle_transaction_id = Column(String, nullable=True, index=True)
+    paddle_customer_id = Column(String, nullable=True, index=True)
+    
+    # Event Details
+    amount = Column(Float, nullable=True)
+    currency = Column(String, nullable=True)
+    status = Column(String, nullable=False, index=True)  # "success", "failed", "pending"
+    
+    # Raw Event Data (for debugging and audit)
+    raw_event_data = Column(Text, nullable=False)  # Full JSON dump of Paddle event
+    
+    # Timing
+    paddle_event_time = Column(DateTime(timezone=True), nullable=False, index=True)
+    processed_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # Processing Status
+    processing_status = Column(String, default="processed", index=True)  # "processed", "failed", "ignored"
+    processing_error = Column(Text, nullable=True)
+    
+    # Relationships
+    user = relationship("User")
+    subscription = relationship("PaddleSubscription", back_populates="billing_events")
+
+# ============================================================================
+# PADDLE BILLING INDEXES FOR PERFORMANCE
+# ============================================================================
+
+# PaddleSubscription indexes
+Index('idx_paddle_subscriptions_user_id', PaddleSubscription.user_id)
+Index('idx_paddle_subscriptions_customer_id', PaddleSubscription.paddle_customer_id)
+Index('idx_paddle_subscriptions_subscription_id', PaddleSubscription.paddle_subscription_id)
+Index('idx_paddle_subscriptions_tier_status', PaddleSubscription.tier, PaddleSubscription.status)
+Index('idx_paddle_subscriptions_billing_period', PaddleSubscription.current_period_start, PaddleSubscription.current_period_end)
+
+# UsageRecord indexes for billing queries
+Index('idx_usage_records_user_billing_period', UsageRecord.user_id, UsageRecord.billing_period_start)
+Index('idx_usage_records_subscription_billing_period', UsageRecord.subscription_id, UsageRecord.billing_period_start)
+Index('idx_usage_records_usage_type_created', UsageRecord.usage_type, UsageRecord.created_at)
+Index('idx_usage_records_endpoint_created', UsageRecord.endpoint, UsageRecord.created_at)
+
+# BillingEvent indexes for webhook processing and audit
+Index('idx_billing_events_paddle_event_id', BillingEvent.paddle_event_id)
+Index('idx_billing_events_user_event_time', BillingEvent.user_id, BillingEvent.paddle_event_time)
+Index('idx_billing_events_subscription_event_time', BillingEvent.subscription_id, BillingEvent.paddle_event_time)
+Index('idx_billing_events_event_type_time', BillingEvent.event_type, BillingEvent.paddle_event_time)
+Index('idx_billing_events_processing_status', BillingEvent.processing_status)

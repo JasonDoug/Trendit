@@ -49,6 +49,7 @@ npm run build
   - `DATABASE_URL`: PostgreSQL connection string
   - `REDDIT_CLIENT_ID` and `REDDIT_CLIENT_SECRET`: Reddit API credentials
   - Optional: `OPENROUTER_API_KEY` for AI-powered sentiment analysis
+  - **Billing System**: `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`, `PADDLE_PRO_PRICE_ID`, `PADDLE_ENTERPRISE_PRICE_ID`
 
 ## Architecture Overview
 
@@ -59,8 +60,9 @@ Trendit is a Reddit data collection and analysis platform with a FastAPI backend
 - `AsyncRedditClient` (`services/reddit_client_async.py`): AsyncPRAW-based Reddit API interaction
 - `DataCollector` (`services/data_collector.py`): High-level data collection scenarios with improved date filtering
 - `AnalyticsService` (`services/analytics.py`): Data analysis and insights
+- `PaddleService` (`services/paddle_service.py`): Complete SaaS billing integration with Paddle
 - `ImprovedDateFiltering` (`services/date_filter_fix.py`): Enhanced date filtering with timezone handling and buffers
-- API endpoints (`api/collect.py`, `api/data.py`, `api/export.py`): REST APIs for collection, querying, and export
+- API endpoints (`api/scenarios.py`, `api/collect.py`, `api/data.py`, `api/export.py`): REST APIs for frontend communication
 
 **Database Models:**
 - `CollectionJob`: Tracks data collection tasks with parameters and status
@@ -68,6 +70,7 @@ Trendit is a Reddit data collection and analysis platform with a FastAPI backend
 - `RedditComment`: Stores comment threads with hierarchy
 - `RedditUser`: User profiles and karma data
 - `Analytics`: Generated insights and summaries
+- **Billing Models**: `PaddleSubscription`, `UsageRecord`, `BillingEvent` for SaaS monetization
 
 ### Key Data Flow
 1. User initiates collection via API endpoints (planned frontend UI)
@@ -111,10 +114,18 @@ The system implements specific user scenarios:
 - Batch processing for large datasets
 - GDPR-compliant data export controls
 
+### SaaS Billing System (NEW)
+- **Multi-tier pricing**: Free (100 calls), Pro ($29, 10K calls), Enterprise ($299, 100K calls)
+- **Usage tracking & rate limiting**: Real-time monitoring with tier-based limits
+- **Paddle integration**: Complete subscription lifecycle management with webhooks
+- **Usage analytics**: Detailed usage breakdowns and trend analysis
+- See `PADDLE_BILLING_INTEGRATION.md` for complete documentation
+
 ## Key Files and Responsibilities
 
-- `main.py`: FastAPI application setup, CORS, health checks
-- `models/models.py`: Complete database schema with relationships
+### Core Application
+- `main.py`: FastAPI application setup, CORS, health checks, billing integration
+- `models/models.py`: Complete database schema with relationships + billing models
 - `services/data_collector.py`: Core collection logic implementing user scenarios
 - `services/reddit_client_async.py`: Async Reddit API abstraction layer
 - `services/date_filter_fix.py`: Improved date filtering logic with timezone handling
@@ -124,6 +135,14 @@ The system implements specific user scenarios:
 - `test_api.py`: Comprehensive test suite for all functionality
 - `test_date_filter.py`: Date filtering test suite
 - `verify_integration.py`: Integration verification script
+
+### Billing System (NEW)
+- `services/paddle_service.py`: Complete Paddle API integration with enhanced 2025 security
+- `api/billing.py`: Subscription management, checkout, usage analytics endpoints
+- `api/webhooks.py`: Paddle webhook processing with signature verification
+- `api/auth.py`: Enhanced authentication with usage tracking dependencies
+- `PADDLE_BILLING_INTEGRATION.md`: Complete integration documentation
+- `BILLING_SETUP_GUIDE.md`: Step-by-step setup instructions
 
 ## Testing Strategy
 

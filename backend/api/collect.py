@@ -10,7 +10,7 @@ from models.database import get_db
 from models.models import CollectionJob, JobStatus, SortType, TimeFilter, RedditPost, RedditComment, User
 from services.data_collector import DataCollector
 from services.sentiment_analyzer import sentiment_analyzer
-from api.auth import require_active_subscription
+from api.auth import require_api_call_limit
 from services.date_filter_fix import ImprovedDateFiltering
 
 router = APIRouter(prefix="/api/collect", tags=["collection"])
@@ -86,7 +86,7 @@ async def create_collection_job(
     job_request: CollectionJobRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_active_subscription)
+    current_user: User = Depends(require_api_call_limit)
 ):
     """
     Create a new persistent collection job
@@ -141,7 +141,7 @@ async def create_collection_job(
 async def get_collection_job(
     job_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_active_subscription)
+    current_user: User = Depends(require_api_call_limit)
 ):
     """
     Get detailed information about a specific collection job
@@ -157,7 +157,7 @@ async def get_collection_job(
 async def get_collection_job_status(
     job_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_active_subscription)
+    current_user: User = Depends(require_api_call_limit)
 ):
     """
     Get quick status update for a collection job
@@ -182,7 +182,7 @@ async def list_collection_jobs(
     page: int = 1,
     per_page: int = 20,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_active_subscription)
+    current_user: User = Depends(require_api_call_limit)
 ):
     """
     List collection jobs with optional filtering
@@ -210,7 +210,7 @@ async def list_collection_jobs(
 async def cancel_collection_job(
     job_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_active_subscription)
+    current_user: User = Depends(require_api_call_limit)
 ):
     """
     Cancel a running collection job
@@ -238,7 +238,7 @@ async def cancel_collection_job(
 async def delete_collection_job(
     job_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_active_subscription)
+    current_user: User = Depends(require_api_call_limit)
 ):
     """
     Delete a collection job and all associated data

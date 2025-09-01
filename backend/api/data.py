@@ -9,7 +9,7 @@ import logging
 from models.database import get_db
 from models.models import CollectionJob, RedditPost, RedditComment, RedditUser, Analytics, JobStatus, User
 from services.analytics import AnalyticsService
-from api.auth import require_active_subscription
+from api.auth import require_api_call_limit
 
 router = APIRouter(prefix="/api/data", tags=["data"])
 logger = logging.getLogger(__name__)
@@ -120,7 +120,7 @@ class PostAnalyticsResponse(BaseModel):
 async def query_posts(
     query: PostQueryRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_active_subscription)
+    current_user: User = Depends(require_api_call_limit)
 ):
     """
     Query stored Reddit posts with advanced filtering
@@ -271,7 +271,7 @@ async def query_posts(
 async def query_comments(
     query: CommentQueryRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_active_subscription)
+    current_user: User = Depends(require_api_call_limit)
 ):
     """
     Query stored Reddit comments with advanced filtering
@@ -398,7 +398,7 @@ async def query_comments(
 async def get_job_analytics(
     job_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_active_subscription)
+    current_user: User = Depends(require_api_call_limit)
 ):
     """
     Get analytics for a specific collection job
@@ -510,7 +510,7 @@ async def get_job_analytics(
 @router.get("/summary", response_model=Dict[str, Any])
 async def get_data_summary(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_active_subscription)
+    current_user: User = Depends(require_api_call_limit)
 ):
     """
     Get overall summary of stored data
@@ -571,7 +571,7 @@ async def get_recent_posts(
     subreddit: Optional[str] = Query(None),
     min_score: Optional[int] = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_active_subscription)
+    current_user: User = Depends(require_api_call_limit)
 ):
     """Get recently collected posts with optional filtering"""
     
@@ -605,7 +605,7 @@ async def get_top_posts(
     subreddit: Optional[str] = Query(None),
     timeframe_hours: Optional[int] = Query(None, description="Last N hours"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_active_subscription)
+    current_user: User = Depends(require_api_call_limit)
 ):
     """Get top scoring posts with optional filtering"""
     

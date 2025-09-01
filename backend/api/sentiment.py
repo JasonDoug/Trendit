@@ -5,7 +5,7 @@ import logging
 
 from services.sentiment_analyzer import sentiment_analyzer
 from models.models import User
-from api.auth import require_active_subscription
+from api.auth import require_sentiment_limit
 
 router = APIRouter(prefix="/api/sentiment", tags=["sentiment"])
 logger = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ class BatchSentimentAnalysisResponse(BaseModel):
 
 @router.get("/status")
 async def get_sentiment_analysis_status(
-    current_user: User = Depends(require_active_subscription)
+    current_user: User = Depends(require_sentiment_limit)
 ):
     """
     Get sentiment analysis service status
@@ -44,7 +44,7 @@ async def get_sentiment_analysis_status(
 @router.post("/analyze", response_model=SentimentAnalysisResponse)
 async def analyze_text_sentiment(
     request: SentimentAnalysisRequest,
-    current_user: User = Depends(require_active_subscription)
+    current_user: User = Depends(require_sentiment_limit)
 ):
     """
     Analyze sentiment of a single text
@@ -73,7 +73,7 @@ async def analyze_text_sentiment(
 @router.post("/analyze-batch", response_model=BatchSentimentAnalysisResponse)
 async def analyze_batch_sentiment(
     request: BatchSentimentAnalysisRequest,
-    current_user: User = Depends(require_active_subscription)
+    current_user: User = Depends(require_sentiment_limit)
 ):
     """
     Analyze sentiment of multiple texts in batch
@@ -119,7 +119,7 @@ async def analyze_batch_sentiment(
 
 @router.get("/test")
 async def test_sentiment_analysis(
-    current_user: User = Depends(require_active_subscription)
+    current_user: User = Depends(require_sentiment_limit)
 ):
     """
     Test sentiment analysis with sample texts

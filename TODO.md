@@ -152,9 +152,17 @@
 - [x] Comprehensive documentation (README, TESTING, CURL examples)
 - [x] Health check and monitoring endpoints
 - [x] API documentation with Swagger/ReDoc
+- [x] **Collection API - Persistent data pipeline (/api/collect/*)** ✨
+- [x] **Data API - Query stored data (/api/data/*)** ✨
+- [x] **Export API - Export datasets (/api/export/*)** ✨
+- [x] **Async PRAW refactor for better performance** ✨
+- [x] **OpenRouter integration for sentiment analysis** ✨
+- [x] **Complete authentication/authorization system** ✨
+- [x] **JWT and API key management** ✨
+- [x] **Subscription-based access control (28+ endpoints gated)** ✨
 
-### 🚧 In Progress
-- Currently: Planning next development phase
+### 🚧 In Progress  
+- [x] CodeRabbit review of comprehensive subscription gating system (PR #17)
 
 ### 📋 Notes
 - Current architecture supports 3-tier API: Scenarios → Query → Collection
@@ -165,11 +173,18 @@
 
 ## Priority Order for Implementation
 
-1. **Collection API** (most critical missing piece)
-2. **Authentication system** (required for production)
-3. **Async PRAW migration** (performance improvement)
-4. **Rate limiting** (API protection)
-5. **OpenRouter integration** (sentiment analysis)
-6. **Caching layer** (scalability)
-7. **Testing infrastructure** (quality assurance)
-8. **Production deployment** (DevOps)
+### 🎯 NEXT PHASE: Production & Monetization
+1. **Payment Integration (Stripe)** - Convert subscriptions to actual billing
+2. **Rate limiting per subscription tier** - Free: 10/hour, Pro: 1000/hour, etc.  
+3. **Usage tracking and analytics** - Monitor API calls, exports, sentiment analysis
+4. **Frontend integration** - React/Next.js for subscription management
+5. **Caching layer (Redis)** - Scale for paying customers
+6. **Testing infrastructure** - Comprehensive test coverage
+7. **Production deployment** - Docker + CI/CD pipeline
+8. **Advanced analytics dashboard** - Customer insights and reporting
+
+### ✅ MAJOR MILESTONES ACHIEVED
+- **Core Platform**: All APIs implemented and working
+- **Authentication**: Complete subscription-based access control  
+- **Revenue Protection**: All premium features properly gated
+- **SaaS Foundation**: Ready for production monetization
