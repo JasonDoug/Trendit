@@ -13,7 +13,7 @@ import uuid
 from models.database import get_db
 from models.models import CollectionJob, RedditPost, RedditComment, JobStatus, User
 from api.data import PostQueryRequest, CommentQueryRequest
-from api.auth import require_active_subscription
+from api.auth import require_export_limit
 
 router = APIRouter(prefix="/api/export", tags=["export"])
 logger = logging.getLogger(__name__)
@@ -60,7 +60,7 @@ async def export_posts(
     export_request: PostQueryRequest,
     response: Response,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_active_subscription)
+    current_user: User = Depends(require_export_limit)
 ):
     """
     Export posts in specified format (csv, json, jsonl, parquet)
@@ -194,7 +194,7 @@ async def export_comments(
     export_request: CommentQueryRequest,
     response: Response,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_active_subscription)
+    current_user: User = Depends(require_export_limit)
 ):
     """
     Export comments in specified format (csv, json, jsonl, parquet)
@@ -306,7 +306,7 @@ async def export_job_data(
     format: str,
     include_comments: bool = False,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_active_subscription)
+    current_user: User = Depends(require_export_limit)
 ):
     """
     Export all data from a specific collection job
@@ -449,7 +449,7 @@ async def export_job_data(
 
 @router.get("/formats")
 async def get_supported_formats(
-    current_user: User = Depends(require_active_subscription)
+    current_user: User = Depends(require_export_limit)
 ):
     """
     Get list of supported export formats and their descriptions

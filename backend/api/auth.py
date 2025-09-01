@@ -8,9 +8,10 @@ import secrets
 import hashlib
 import jwt
 from typing import Optional
+from sqlalchemy import func
 
 from models.database import get_db
-from models.models import User, APIKey, SubscriptionStatus
+from models.models import User, APIKey, SubscriptionStatus, PaddleSubscription, SubscriptionTier, UsageRecord
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
@@ -153,15 +154,185 @@ async def get_current_user_from_api_key(
     
     return user
 
-async def require_active_subscription(
-    user: User = Depends(get_current_user_from_api_key)
+def _get_user_tier_limits(user: User, db: Session) -> tuple[SubscriptionTier, dict]:
+    """Get user's subscription tier and usage limits"""
+    # Import here to avoid circular imports
+    from services.paddle_service import paddle_service
+    
+    # Check if user has an active Paddle subscription
+    paddle_subscription = db.query(PaddleSubscription).filter(
+        PaddleSubscription.user_id == user.id,
+        PaddleSubscription.status == SubscriptionStatus.ACTIVE
+    ).first()
+    
+    if paddle_subscription:
+        tier = paddle_subscription.tier
+        limits = paddle_service.get_tier_limits(tier)
+    else:
+        # Default to FREE tier for users without subscription
+        tier = SubscriptionTier.FREE
+        limits = paddle_service.get_tier_limits(tier)
+    
+    return tier, limits
+
+def _get_current_usage(user_id: int, usage_type: str, period_start: datetime, db: Session) -> int:
+    """Get current usage for user in current billing period"""
+    return db.query(func.count(UsageRecord.id)).filter(
+        UsageRecord.user_id == user_id,
+        UsageRecord.usage_type == usage_type,
+        UsageRecord.created_at >= period_start
+    ).scalar() or 0
+
+def _calculate_billing_period(user: User, db: Session) -> tuple[datetime, datetime]:
+    """Calculate billing period for user"""
+    from services.paddle_service import paddle_service
+    
+    paddle_subscription = db.query(PaddleSubscription).filter(
+        PaddleSubscription.user_id == user.id,
+        PaddleSubscription.status == SubscriptionStatus.ACTIVE
+    ).first()
+    
+    if paddle_subscription:
+        return paddle_service.calculate_billing_period(paddle_subscription)
+    else:
+        # Use calendar month for free users
+        now = datetime.utcnow()
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        if now.month == 12:
+            next_month = month_start.replace(year=now.year + 1, month=1)
+        else:
+            next_month = month_start.replace(month=now.month + 1)
+        return month_start, next_month
+
+def _record_usage(user: User, usage_type: str, endpoint: str, period_start: datetime, period_end: datetime, db: Session):
+    """Record usage event"""
+    # Get subscription ID if exists
+    paddle_subscription = db.query(PaddleSubscription).filter(
+        PaddleSubscription.user_id == user.id,
+        PaddleSubscription.status == SubscriptionStatus.ACTIVE
+    ).first()
+    
+    subscription_id = paddle_subscription.id if paddle_subscription else None
+    
+    usage_record = UsageRecord(
+        user_id=user.id,
+        subscription_id=subscription_id,
+        usage_type=usage_type,
+        endpoint=endpoint,
+        billing_period_start=period_start,
+        billing_period_end=period_end,
+        request_metadata={}
+    )
+    db.add(usage_record)
+    db.commit()
+
+async def require_active_subscription_with_usage_tracking(
+    usage_type: str,
+    endpoint: str,
+    user: User = Depends(get_current_user_from_api_key),
+    db: Session = Depends(get_db)
 ) -> User:
-    """Require user to have an active subscription"""
-    if user.subscription_status != SubscriptionStatus.ACTIVE:
+    """
+    Enhanced subscription check with usage tracking and rate limiting
+    
+    Args:
+        usage_type: Type of usage (api_call, export, sentiment_analysis)
+        endpoint: Endpoint name for tracking
+        user: Authenticated user
+        db: Database session
+        
+    Returns:
+        User object if access is allowed
+        
+    Raises:
+        HTTPException: If subscription inactive or usage limits exceeded
+    """
+    # Get user's tier and limits
+    tier, limits = _get_user_tier_limits(user, db)
+    
+    # Calculate billing period
+    period_start, period_end = _calculate_billing_period(user, db)
+    
+    # Check current usage
+    current_usage = _get_current_usage(user.id, usage_type, period_start, db)
+    
+    # Get usage limit for this type
+    usage_limit_key = f"{usage_type}_per_month"
+    usage_limit = limits.get(usage_limit_key, 0)
+    
+    # Check if user has exceeded limits (-1 means unlimited for enterprise)
+    if usage_limit != -1 and current_usage >= usage_limit:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Usage limit exceeded. {current_usage}/{usage_limit} {usage_type} used this month. Upgrade your plan for higher limits.",
+            headers={
+                "X-RateLimit-Limit": str(usage_limit),
+                "X-RateLimit-Remaining": str(max(0, usage_limit - current_usage)),
+                "X-RateLimit-Reset": str(int(period_end.timestamp())),
+                "X-User-Tier": tier.value
+            }
+        )
+    
+    # For free users, ensure they have basic subscription check
+    if tier == SubscriptionTier.FREE and user.subscription_status != SubscriptionStatus.ACTIVE:
+        # Allow free tier usage but warn about limits
+        pass
+    elif tier != SubscriptionTier.FREE and user.subscription_status != SubscriptionStatus.ACTIVE:
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail="Active subscription required to access this endpoint",
         )
+    
+    # Record the usage
+    _record_usage(user, usage_type, endpoint, period_start, period_end, db)
+    
+    # Add usage info to response headers for API consumers
+    user._usage_info = {
+        "tier": tier.value,
+        "current_usage": current_usage + 1,  # Include this request
+        "usage_limit": usage_limit,
+        "period_start": period_start.isoformat(),
+        "period_end": period_end.isoformat()
+    }
+    
+    return user
+
+# Convenience dependency functions for different usage types
+async def require_api_call_limit(
+    user: User = Depends(get_current_user_from_api_key),
+    db: Session = Depends(get_db)
+) -> User:
+    """Check API call limits"""
+    return await require_active_subscription_with_usage_tracking(
+        "api_calls", "general_api", user, db
+    )
+
+async def require_export_limit(
+    user: User = Depends(get_current_user_from_api_key),
+    db: Session = Depends(get_db)
+) -> User:
+    """Check export limits"""
+    return await require_active_subscription_with_usage_tracking(
+        "exports", "data_export", user, db
+    )
+
+async def require_sentiment_limit(
+    user: User = Depends(get_current_user_from_api_key),
+    db: Session = Depends(get_db)
+) -> User:
+    """Check sentiment analysis limits"""
+    return await require_active_subscription_with_usage_tracking(
+        "sentiment_analysis", "sentiment_api", user, db
+    )
+
+# Legacy function for backward compatibility
+async def require_active_subscription(
+    user: User = Depends(get_current_user_from_api_key)
+) -> User:
+    """Legacy subscription check - use specific usage tracking functions instead"""
+    if user.subscription_status != SubscriptionStatus.ACTIVE:
+        # Allow free tier users for now, but this should be migrated
+        pass
     return user
 
 # Authentication endpoints
