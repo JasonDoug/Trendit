@@ -5,6 +5,7 @@ import logging
 from sqlalchemy.orm import Session
 from .reddit_client_async import AsyncRedditClient
 from .analytics import AnalyticsService
+from .date_filter_fix import ImprovedDateFiltering, apply_improved_date_filtering
 from models.models import CollectionJob, RedditPost, RedditComment, RedditUser, JobStatus
 from models.database import get_db
 
@@ -26,71 +27,83 @@ class DataCollector:
         keywords: List[str],
         date_from: datetime,
         date_to: datetime,
-        limit: int = 10,
-        sort_by: str = "score"  # score, comments, date
+        limit: int = 100,
+        sort_by: str = "score"
     ) -> List[Dict[str, Any]]:
         """
-        Scenario 1: Get most popular posts about 'poetry' in r/python from date X to Y
+        Search posts in a specific subreddit by keywords and date range.
+        IMPROVED VERSION with better date filtering logic.
         
         Args:
-            subreddit: Subreddit name (e.g., 'python')
-            keywords: List of keywords to search for (e.g., ['poetry'])
+            subreddit: Subreddit name
+            keywords: List of keywords to search for
             date_from: Start date
             date_to: End date
-            limit: Number of results (e.g., 10)
-            sort_by: How to rank results (score, comments, date)
+            limit: Number of posts to return
+            sort_by: Sort criteria (score, comments, date)
         """
         try:
+            logger.info(f"Searching for posts in r/{subreddit} with keywords: {keywords}")
+            logger.info(f"Date range: {date_from} to {date_to}")
+            
+            # Calculate days between dates for optimal Reddit time_filter selection
+            days_diff = (date_to - date_from).days
+            time_filter = ImprovedDateFiltering.select_optimal_time_filter(days_diff)
+            
+            logger.info(f"Using Reddit time_filter: {time_filter} for {days_diff} day range")
+            
             # Search for posts containing keywords
             search_query = " OR ".join(keywords)
             
-            # Get posts from the time period (AsyncPRAW doesn't filter by date directly)
             async with self.reddit_client as reddit:
                 all_posts = await reddit.search_posts(
                     query=search_query,
                     subreddit_name=subreddit,
-                    sort="top",
-                    time_filter="all",
-                    limit=500  # Get more to filter by date
+                    sort="relevance",  # Use relevance for keyword searches
+                    time_filter=time_filter,  # Use optimal time_filter
+                    limit=min(limit * 3, 500)  # Get more posts to account for filtering
                 )
             
-            # Filter by date range and keywords
-            filtered_posts = []
-            for post in all_posts:
-                post_date = post['created_utc']
+            logger.info(f"Reddit API returned {len(all_posts)} posts")
+            
+            if not all_posts:
+                logger.info(f"No posts found in r/{subreddit} for query: {search_query}")
+                return []
+            
+            # Apply improved date filtering with diagnostic info
+            filtered_posts = apply_improved_date_filtering(
+                all_posts, 
+                days=days_diff,
+                debug=True  # Enable debugging to understand filtering
+            )
+            
+            # Additional keyword filtering (since we're using OR search)
+            keyword_filtered_posts = []
+            for post in filtered_posts:
+                title_text = post.get('title', '').lower()
+                content_text = (post.get('selftext', '') or '').lower()
+                combined_text = f"{title_text} {content_text}"
                 
-                # Ensure timezone-aware comparison
-                if post_date.tzinfo is None:
-                    post_date = post_date.replace(tzinfo=timezone.utc)
-                if date_from.tzinfo is None:
-                    date_from = date_from.replace(tzinfo=timezone.utc)
-                if date_to.tzinfo is None:
-                    date_to = date_to.replace(tzinfo=timezone.utc)
-                
-                # Check date range
-                if date_from <= post_date <= date_to:
-                    # Check if any keyword appears in title or content
-                    title_text = post['title'].lower()
-                    content_text = (post.get('selftext', '') or '').lower()
-                    combined_text = f"{title_text} {content_text}"
-                    
-                    if any(keyword.lower() in combined_text for keyword in keywords):
-                        filtered_posts.append(post)
+                # Check if ANY keyword appears (OR logic)
+                if any(keyword.lower() in combined_text for keyword in keywords):
+                    keyword_filtered_posts.append(post)
             
             # Sort by specified criteria
             if sort_by == "score":
-                filtered_posts.sort(key=lambda x: x['score'], reverse=True)
+                keyword_filtered_posts.sort(key=lambda x: x.get('score', 0), reverse=True)
             elif sort_by == "comments":
-                filtered_posts.sort(key=lambda x: x['num_comments'], reverse=True)
+                keyword_filtered_posts.sort(key=lambda x: x.get('num_comments', 0), reverse=True)
             elif sort_by == "date":
-                filtered_posts.sort(key=lambda x: x['created_utc'], reverse=True)
+                keyword_filtered_posts.sort(key=lambda x: x.get('created_utc', 0), reverse=True)
             
-            result = filtered_posts[:limit]
-            logger.info(f"Found {len(result)} posts about {keywords} in r/{subreddit} from {date_from} to {date_to}")
-            return result
+            # Limit results
+            final_results = keyword_filtered_posts[:limit]
+            
+            logger.info(f"Final results: {len(final_results)} posts after keyword + date filtering")
+            return final_results
             
         except Exception as e:
-            logger.error(f"Error searching posts: {e}")
+            logger.error(f"Error searching posts in r/{subreddit}: {e}")
             raise
     
     # SCENARIO 2: Trending posts across multiple subreddits for today
