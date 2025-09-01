@@ -11,6 +11,7 @@ from models.models import CollectionJob, JobStatus, SortType, TimeFilter, Reddit
 from services.data_collector import DataCollector
 from services.sentiment_analyzer import sentiment_analyzer
 from api.auth import require_active_subscription
+from services.date_filter_fix import ImprovedDateFiltering
 
 router = APIRouter(prefix="/api/collect", tags=["collection"])
 logger = logging.getLogger(__name__)
@@ -311,11 +312,24 @@ async def run_collection_job(job_id: int, job_params: Dict[str, Any]):
                         # Use DataCollector to get posts based on job parameters
                         if job.keywords:
                             # If keywords are specified, use search
+                            # Use improved date range logic
+                            if job.date_from and job.date_to:
+                                # Use job-specified dates
+                                date_from = job.date_from
+                                date_to = job.date_to
+                            else:
+                                # Use improved date range with buffer for better collection
+                                date_from, date_to = ImprovedDateFiltering.create_date_range_with_buffer(
+                                    days=7, buffer_hours=4
+                                )
+                            
+                            logger.info(f"Collection date range: {date_from} to {date_to}")
+                            
                             posts_data = await collector.search_subreddit_posts_by_keyword_and_date(
                                 subreddit=subreddit,
                                 keywords=job.keywords,
-                                date_from=job.date_from or (datetime.utcnow() - timedelta(days=7)),
-                                date_to=job.date_to or datetime.utcnow(),
+                                date_from=date_from,
+                                date_to=date_to,
                                 limit=min(job.post_limit // len(job.subreddits), 100),
                                 sort_by="score"
                             )
@@ -327,6 +341,26 @@ async def run_collection_job(job_id: int, job_params: Dict[str, Any]):
                                 limit_per_subreddit=min(job.post_limit // len(job.subreddits), 25),
                                 final_limit=min(job.post_limit, 100)
                             )
+                        
+                        # Add debugging code for monitoring collection results
+                        if posts_data:
+                            logger.info(f"Collection debug - posts found: {len(posts_data)}")
+                            # Show date range of collected posts for debugging
+                            try:
+                                post_dates = []
+                                for post in posts_data:
+                                    created_utc = post.get('created_utc')
+                                    if created_utc and isinstance(created_utc, datetime):
+                                        post_dates.append(created_utc)
+                                
+                                if post_dates:
+                                    earliest_post = min(post_dates)
+                                    latest_post = max(post_dates)
+                                    logger.info(f"Collected posts date range: {earliest_post} to {latest_post}")
+                            except Exception as e:
+                                logger.warning(f"Error analyzing post dates: {e}")
+                        else:
+                            logger.warning("No posts collected - this might indicate a date filtering issue")
                         
                         # Store collected data with sentiment analysis
                         posts_for_sentiment = []
