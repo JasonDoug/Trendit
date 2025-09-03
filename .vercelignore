@@ -1,0 +1,54 @@
+# Virtual environments
+backend/venv/
+venv/
+env/
+.env.local
+
+# Development files
+.env
+*.log
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.coverage
+.pytest_cache/
+.mypy_cache/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Documentation and non-essential files
+docs/
+wiki/
+*.md
+!README.md
+
+# Git and IDE files
+.git/
+.gitignore
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Development scripts
+run_*.sh
+install_deps.sh
+setup_dev_env.sh
+test_*.py
+
+# Temporary files
+.DS_Store
+Thumbs.db
+*.tmp
+*.temp
+
+# Node modules (if any)
+node_modules/
+package-lock.json
+yarn.lock

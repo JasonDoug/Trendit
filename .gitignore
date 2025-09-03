@@ -259,6 +259,18 @@ htmlcov/
 docs/_build/
 docs/build/
 
+# Claude Code conversation exports (ignore these)
+docs/2025-*-*.txt
+docs/*conversation*.txt
+docs/*session*.txt
+
+# Keep important documentation files (track these)
+# docs/*.md files are tracked by default
+# docs/API_DOCUMENTATION.md
+# docs/ARCHITECTURE.md
+# docs/DEPLOYMENT.md
+# etc.
+
 # Backup files
 *.bak
 *.backup

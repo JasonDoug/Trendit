@@ -1,0 +1,66 @@
+services:
+  - type: web
+    name: trendit-api
+    env: python
+    region: oregon
+    buildCommand: |
+      cd backend
+      pip install -r requirements.txt
+    startCommand: |
+      cd backend
+      uvicorn main:app --host 0.0.0.0 --port $PORT
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDDIT_CLIENT_ID
+        sync: false
+      - key: REDDIT_CLIENT_SECRET
+        sync: false
+      - key: REDDIT_USER_AGENT
+        value: Trendit/1.0 by /u/trendit_user
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: JWT_ALGORITHM
+        value: HS256
+      - key: JWT_ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "30"
+      - key: API_KEY_SALT
+        sync: false
+      - key: PADDLE_API_KEY
+        sync: false
+      - key: PADDLE_ENVIRONMENT
+        value: sandbox
+      - key: PADDLE_WEBHOOK_SECRET
+        sync: false
+      - key: PADDLE_CLIENT_TOKEN
+        sync: false
+      - key: PADDLE_PRO_PRICE_ID
+        sync: false
+      - key: PADDLE_ENTERPRISE_PRICE_ID
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        fromService:
+          type: web
+          name: trendit-api
+          property: port
+      - key: RELOAD
+        value: "false"
+      - key: LOG_LEVEL
+        value: INFO
+      - key: RATE_LIMIT_REQUESTS
+        value: "60"
+
+  - type: pserv
+    name: trendit-postgres
+    env: postgresql
+    region: oregon
+    plan: starter
+    databaseName: trendit_prod
+    databaseUser: trendit_user
+    ipAllowList: []
