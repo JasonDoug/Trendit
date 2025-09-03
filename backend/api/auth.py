@@ -3,12 +3,13 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
 from passlib.context import CryptContext
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import secrets
 import hashlib
 import jwt
+import os
 from typing import Optional
-from sqlalchemy import func
+from sqlalchemy import func, and_
 
 from models.database import get_db
 from models.models import User, APIKey, SubscriptionStatus, PaddleSubscription, SubscriptionTier, UsageRecord
@@ -18,10 +19,12 @@ router = APIRouter(prefix="/auth", tags=["authentication"])
 # Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# JWT settings (should be in environment variables in production)
-SECRET_KEY = "your-secret-key-change-in-production"  # TODO: Move to env var
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+# JWT settings
+SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError("JWT_SECRET_KEY must be set in environment variables")
+ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 
 security = HTTPBearer()
 
@@ -75,9 +78,9 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
+        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
@@ -101,11 +104,13 @@ async def get_current_user(
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Could not validate credentials",
+                headers={"WWW-Authenticate": "Bearer"},
             )
-    except jwt.PyJWTError:
+    except jwt.InvalidTokenError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
         )
     
     user = db.query(User).filter(User.id == int(user_id)).first()
@@ -113,6 +118,13 @@ async def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Account is inactive",
+            headers={"WWW-Authenticate": "Bearer"},
         )
     return user
 
@@ -130,9 +142,14 @@ async def get_current_user_from_api_key(
     # Hash the provided key to compare with stored hash
     key_hash = hashlib.sha256(credentials.credentials.encode()).hexdigest()
     
+    # Check API key with proper SQLAlchemy syntax and expiry enforcement
+    now = datetime.now(timezone.utc)
     api_key = db.query(APIKey).filter(
-        APIKey.key_hash == key_hash,
-        APIKey.is_active == True
+        and_(
+            APIKey.key_hash == key_hash,
+            APIKey.is_active.is_(True),
+            (APIKey.expires_at.is_(None)) | (APIKey.expires_at > now),
+        )
     ).first()
     
     if not api_key:
@@ -142,7 +159,7 @@ async def get_current_user_from_api_key(
         )
     
     # Update last used timestamp
-    api_key.last_used_at = datetime.utcnow()
+    api_key.last_used_at = datetime.now(timezone.utc)
     db.commit()
     
     user = db.query(User).filter(User.id == api_key.user_id).first()

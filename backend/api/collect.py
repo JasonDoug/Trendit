@@ -59,7 +59,7 @@ class CollectionJobResponse(BaseModel):
     post_limit: int
     
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 class CollectionJobStatusResponse(BaseModel):
     """Simplified response for job status checks"""
@@ -421,6 +421,15 @@ async def run_collection_job(job_id: int, job_params: Dict[str, Any]):
                         # Store posts with sentiment scores
                         for reddit_post, sentiment_score in zip(reddit_posts, sentiment_scores):
                             try:
+                                # Check if post already exists
+                                existing_post = db.query(RedditPost).filter(
+                                    RedditPost.reddit_id == reddit_post.reddit_id
+                                ).first()
+                                
+                                if existing_post:
+                                    logger.info(f"Skipping duplicate post: {reddit_post.reddit_id}")
+                                    continue
+                                
                                 reddit_post.sentiment_score = sentiment_score
                                 db.add(reddit_post)
                                 db.flush()  # Get the ID without committing
@@ -437,6 +446,14 @@ async def run_collection_job(job_id: int, job_params: Dict[str, Any]):
                                         
                                         for comment_data in comments_data:
                                             try:
+                                                # Check if comment already exists
+                                                existing_comment = db.query(RedditComment).filter(
+                                                    RedditComment.reddit_id == comment_data['reddit_id']
+                                                ).first()
+                                                
+                                                if existing_comment:
+                                                    continue
+                                                
                                                 reddit_comment = RedditComment(
                                                     reddit_id=comment_data['reddit_id'],
                                                     post_id=reddit_post.id,
@@ -458,7 +475,8 @@ async def run_collection_job(job_id: int, job_params: Dict[str, Any]):
                                         continue
                                 
                             except Exception as e:
-                                logger.error(f"Error storing post {post_data.get('id')}: {e}")
+                                logger.error(f"Error storing post {reddit_post.reddit_id}: {e}")
+                                db.rollback()  # Rollback the transaction on error
                                 continue
                         
                         # Update progress
