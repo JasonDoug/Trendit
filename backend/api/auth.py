@@ -37,6 +37,7 @@ class UserRegister(BaseModel):
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
+    username: Optional[str] = None  # Allow optional username field from frontend
 
 class UserResponse(BaseModel):
     id: int

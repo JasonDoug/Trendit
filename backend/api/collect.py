@@ -59,7 +59,7 @@ class CollectionJobResponse(BaseModel):
     post_limit: int
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class CollectionJobStatusResponse(BaseModel):
     """Simplified response for job status checks"""
@@ -70,6 +70,9 @@ class CollectionJobStatusResponse(BaseModel):
     collected_posts: int
     collected_comments: int
     error_message: Optional[str]
+    
+    class Config:
+        from_attributes = True
 
 class CollectionJobListResponse(BaseModel):
     """Response for listing collection jobs"""
